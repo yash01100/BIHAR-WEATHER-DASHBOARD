@@ -1,0 +1,34 @@
+﻿# Environment variables and secrets
+.env
+.env.*
+!.env.example
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+# Node and frontend build output
+node_modules/
+dist/
+# Local backups
+*.backup
+*.bak
+*.before-*.bak
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local project backup
+BIHAR-WEATHER-DASHBOARD-backup-*/
+
+# Additional local backup files
+frontend/src/*.backup*
+
+# Unused Vite template files
+frontend/README.md
+frontend/src/assets/react.svg
+frontend/src/assets/vite.svg
