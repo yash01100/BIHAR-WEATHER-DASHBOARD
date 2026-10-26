@@ -11,6 +11,7 @@ app = FastAPI(
 # In-memory weather cache
 CACHE_TTL_SECONDS = 300
 weather_cache = {}
+weather_failures = {}
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -83,10 +84,7 @@ def get_districts():
 @app.get("/api/weather/{district}")
 async def get_weather(district: str):
     district_name = next(
-        (
-            name for name in DISTRICTS
-            if name.casefold() == district.casefold()
-        ),
+        (name for name in DISTRICTS if name.casefold() == district.casefold()),
         None,
     )
     if district_name is None:
@@ -98,6 +96,16 @@ async def get_weather(district: str):
     cached = weather_cache.get(district_name)
     if cached and now - cached["timestamp"] < CACHE_TTL_SECONDS:
         return cached["data"]
+    # Avoid repeatedly hitting Open-Meteo after a provider failure.
+    cooldown = weather_failures.get(district_name)
+    if cooldown and now < cooldown["retry_after"]:
+        if cached:
+            return cached["data"]
+        raise HTTPException(
+            status_code=503,
+            detail="Weather provider is rate-limiting requests. Please try again in a few minutes.",
+            headers={"Retry-After": str(max(1, int(cooldown["retry_after"] - now)))},
+        )
     coordinates = DISTRICTS[district_name]
     params = {
         **coordinates,
@@ -114,21 +122,47 @@ async def get_weather(district: str):
         "forecast_days": 5,
     }
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(
                 "https://api.open-meteo.com/v1/forecast",
                 params=params,
             )
             response.raise_for_status()
             weather_data = response.json()
-    except httpx.HTTPError as exc:
-        print(f"Open-Meteo request failed: {type(exc).__name__}: {exc}", flush=True)
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
+        print(
+            f"Open-Meteo request failed: HTTP {status_code}: {exc}",
+            flush=True,
+        )
+        if status_code == 429:
+            weather_failures[district_name] = {
+                "retry_after": time.monotonic() + 300,
+            }
+            if cached:
+                return cached["data"]
+            raise HTTPException(
+                status_code=503,
+                detail="Weather provider is rate-limiting requests. Please try again in a few minutes.",
+                headers={"Retry-After": "300"},
+            ) from exc
         raise HTTPException(
             status_code=502,
-            detail=(
-                "Weather provider is temporarily unavailable. "
-                "Please try again."
-            ),
+            detail="Weather provider is temporarily unavailable. Please try again.",
+        ) from exc
+    except httpx.HTTPError as exc:
+        print(
+            f"Open-Meteo request failed: {type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        weather_failures[district_name] = {
+            "retry_after": time.monotonic() + 60,
+        }
+        if cached:
+            return cached["data"]
+        raise HTTPException(
+            status_code=502,
+            detail="Weather provider is temporarily unavailable. Please try again.",
         ) from exc
     result = {
         "district": district_name,
@@ -142,4 +176,5 @@ async def get_weather(district: str):
         "timestamp": time.monotonic(),
         "data": result,
     }
+    weather_failures.pop(district_name, None)
     return result
