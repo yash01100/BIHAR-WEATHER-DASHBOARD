@@ -12,6 +12,7 @@ app = FastAPI(
 CACHE_TTL_SECONDS = 300
 weather_cache = {}
 weather_failures = {}
+provider_retry_after = 0.0
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -103,6 +104,7 @@ def get_district_coordinates(district: str):
     }
 @app.get("/api/weather/{district}")
 async def get_weather(district: str):
+    global provider_retry_after
     district_name = next(
         (name for name in DISTRICTS if name.casefold() == district.casefold()),
         None,
@@ -116,6 +118,16 @@ async def get_weather(district: str):
     cached = weather_cache.get(district_name)
     if cached and now - cached["timestamp"] < CACHE_TTL_SECONDS:
         return cached["data"]
+    if now < provider_retry_after:
+        if cached:
+            return cached["data"]
+        raise HTTPException(
+            status_code=503,
+            detail="Weather provider is temporarily rate-limited. Please try again later.",
+            headers={
+                "Retry-After": str(max(1, int(provider_retry_after - now)))
+            },
+        )
     # Avoid repeatedly hitting Open-Meteo after a provider failure.
     cooldown = weather_failures.get(district_name)
     if cooldown and now < cooldown["retry_after"]:
@@ -156,6 +168,7 @@ async def get_weather(district: str):
             flush=True,
         )
         if status_code == 429:
+            provider_retry_after = time.monotonic() + 300
             weather_failures[district_name] = {
                 "retry_after": time.monotonic() + 300,
             }
