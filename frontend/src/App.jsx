@@ -82,20 +82,57 @@ function App() {
       setError("");
       setWeatherData(null);
       try {
-        const response = await fetch(
-          `${API_BASE}/api/weather/${encodeURIComponent(district)}`,
-          { signal: controller.signal }
-        );
-        if (!response.ok) {
-          throw new Error(
-            response.status === 502
-              ? "Weather provider se data nahi mil raha. Thodi der baad retry karo."
-              : `Weather API error: ${response.status}`
+        let data;
+        try {
+          const response = await fetch(
+            `${API_BASE}/api/weather/${encodeURIComponent(district)}`,
+            { signal: controller.signal }
           );
-        }
-        const data = await response.json();
-        if (!data.current || !data.daily) {
-          throw new Error("API response mein weather data incomplete hai.");
+          if (!response.ok) {
+            throw new Error(`Backend weather API error: ${response.status}`);
+          }
+          data = await response.json();
+          if (!data.current || !data.daily) {
+            throw new Error("Backend response mein weather data incomplete hai.");
+          }
+        } catch (backendError) {
+          if (backendError.name === "AbortError") throw backendError;
+          const coordinateResponse = await fetch(
+            `${API_BASE}/api/coordinates/${encodeURIComponent(district)}`,
+            { signal: controller.signal }
+          );
+          if (!coordinateResponse.ok) {
+            throw new Error("Backend aur weather fallback dono fail hue. Thodi der baad retry karo.");
+          }
+          const coordinateData = await coordinateResponse.json();
+          const { latitude, longitude } = coordinateData.coordinates;
+          const params = new URLSearchParams({
+            latitude: String(latitude),
+            longitude: String(longitude),
+            current: "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m",
+            daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+            forecast_days: "5",
+            timezone: "Asia/Kolkata"
+          });
+          const fallbackResponse = await fetch(
+            `https://api.open-meteo.com/v1/forecast?${params.toString()}`,
+            { signal: controller.signal }
+          );
+          if (!fallbackResponse.ok) {
+            throw new Error(`Open-Meteo fallback error: ${fallbackResponse.status}`);
+          }
+          const fallbackData = await fallbackResponse.json();
+          if (!fallbackData.current || !fallbackData.daily) {
+            throw new Error("Fallback response mein weather data incomplete hai.");
+          }
+          data = {
+            district: coordinateData.district,
+            coordinates: coordinateData.coordinates,
+            source: "Open-Meteo",
+            data_mode: "live_api",
+            current: fallbackData.current,
+            daily: fallbackData.daily
+          };
         }
         setWeatherData(data);
         setLastUpdated(new Date());
@@ -103,7 +140,7 @@ function App() {
         if (err.name !== "AbortError") {
           setError(
             err.message ||
-              "Backend connect nahi hua. Check karo ki FastAPI server running hai."
+              "Weather data nahi mil raha. Backend aur internet connection check karo."
           );
         }
       } finally {

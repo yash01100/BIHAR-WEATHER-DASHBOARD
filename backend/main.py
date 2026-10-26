@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+﻿from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import time
@@ -81,6 +81,25 @@ def health_check():
 @app.get("/api/districts")
 def get_districts():
     return {"districts": list(DISTRICTS.keys())}
+@app.get("/api/coordinates/{district}")
+def get_district_coordinates(district: str):
+    district_name = next(
+        (
+            name
+            for name in DISTRICTS
+            if name.casefold() == district.casefold()
+        ),
+        None,
+    )
+    if district_name is None:
+        raise HTTPException(
+            status_code=404,
+            detail="District not found. Check /api/districts.",
+        )
+    return {
+        "district": district_name,
+        "coordinates": DISTRICTS[district_name],
+    }
 @app.get("/api/weather/{district}")
 async def get_weather(district: str):
     district_name = next(
@@ -178,3 +197,4 @@ async def get_weather(district: str):
     }
     weather_failures.pop(district_name, None)
     return result
+
