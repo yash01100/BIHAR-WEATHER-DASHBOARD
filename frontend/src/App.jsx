@@ -236,7 +236,7 @@ function App() {
                 ? "Fetching weather..."
                 : error
                   ? "API unavailable"
-                  : "Open-Meteo connected"}
+                  : `${weatherData?.source || "Weather API"} connected`}
             </small>
           </div>
         </div>
@@ -279,7 +279,7 @@ function App() {
               <p>
                 {loading
                   ? "Selected district ke latest available observations aur forecast fetch ho rahe hain."
-                  : "Source: Open-Meteo API. Weather values provider ke latest available data par based hain."}
+                  : `Source: ${weatherData?.source || "Weather API"}. Weather values provider ke latest available data par based hain.`}
               </p>
             </div>
           </section>
@@ -326,7 +326,7 @@ function App() {
             </div>
             <p className="temperature-note">
               {current
-                ? `Feels like ${current.apparent_temperature}°C · ${current.time.replace("T", " ")}`
+                ? `Feels like ${current.apparent_temperature}°C · ${(current.time || current.datetime || "Time unavailable").replace("T", " ")}`
                 : "Temperature will appear when data loads"}
             </p>
           </div>
@@ -339,7 +339,7 @@ function App() {
           </div>
           <div className="hero-footer">
             <span>⌖ {district}, Bihar, India</span>
-            <span>Source: {weatherData?.source || "Open-Meteo"}</span>
+            <span>Source: {weatherData?.source || "Weather API"}</span>
             <span>
               Last Updated:{" "}
               {lastUpdated
@@ -363,7 +363,7 @@ function App() {
           <Metric
             icon="🌧️"
             label="Precipitation"
-            value={current ? `${currentRain} mm` : "--"}
+            value={currentRain != null ? `${currentRain} mm` : "--"}
             detail="Current reported interval"
           />
           <Metric

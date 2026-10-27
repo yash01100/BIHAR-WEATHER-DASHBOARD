@@ -1,7 +1,12 @@
-﻿from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
+import os
+from pathlib import Path as FilePath
+from dotenv import load_dotenv
 import time
+
+load_dotenv(FilePath(__file__).with_name(".env"))
 app = FastAPI(
     title="Bihar Weather Intelligence API",
     description="Live weather data for all 38 Bihar districts",
@@ -104,106 +109,94 @@ def get_district_coordinates(district: str):
     }
 @app.get("/api/weather/{district}")
 async def get_weather(district: str):
-    global provider_retry_after
     district_name = next(
         (name for name in DISTRICTS if name.casefold() == district.casefold()),
         None,
     )
     if district_name is None:
-        raise HTTPException(
-            status_code=404,
-            detail="District not found. Check /api/districts.",
-        )
+        raise HTTPException(status_code=404, detail="District not found. Check /api/districts.")
     now = time.monotonic()
     cached = weather_cache.get(district_name)
     if cached and now - cached["timestamp"] < CACHE_TTL_SECONDS:
         return cached["data"]
-    if now < provider_retry_after:
-        if cached:
-            return cached["data"]
-        raise HTTPException(
-            status_code=503,
-            detail="Weather provider is temporarily rate-limited. Please try again later.",
-            headers={
-                "Retry-After": str(max(1, int(provider_retry_after - now)))
-            },
-        )
-    # Avoid repeatedly hitting Open-Meteo after a provider failure.
-    cooldown = weather_failures.get(district_name)
-    if cooldown and now < cooldown["retry_after"]:
-        if cached:
-            return cached["data"]
-        raise HTTPException(
-            status_code=503,
-            detail="Weather provider is rate-limiting requests. Please try again in a few minutes.",
-            headers={"Retry-After": str(max(1, int(cooldown["retry_after"] - now)))},
-        )
+    api_key = os.getenv("VISUAL_CROSSING_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Weather API key is not configured on the server.")
     coordinates = DISTRICTS[district_name]
+    location = f'{coordinates["latitude"]},{coordinates["longitude"]}'
+    url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{location}"
     params = {
-        **coordinates,
-        "current": (
-            "temperature_2m,relative_humidity_2m,"
-            "apparent_temperature,is_day,precipitation,"
-            "weather_code,wind_speed_10m"
-        ),
-        "daily": (
-            "weather_code,temperature_2m_max,temperature_2m_min,"
-            "precipitation_probability_max"
-        ),
-        "timezone": "Asia/Kolkata",
-        "forecast_days": 5,
+        "key": api_key,
+        "unitGroup": "metric",
+        "include": "current,days",
+        "contentType": "json",
     }
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(
-                "https://api.open-meteo.com/v1/forecast",
-                params=params,
-            )
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            response = await client.get(url, params=params)
             response.raise_for_status()
             weather_data = response.json()
     except httpx.HTTPStatusError as exc:
-        status_code = exc.response.status_code
-        print(
-            f"Open-Meteo request failed: HTTP {status_code}: {exc}",
-            flush=True,
-        )
-        if status_code == 429:
-            provider_retry_after = time.monotonic() + 300
-            weather_failures[district_name] = {
-                "retry_after": time.monotonic() + 300,
-            }
-            if cached:
-                return cached["data"]
+        print(f"Visual Crossing request failed: HTTP {exc.response.status_code}", flush=True)
+        if cached:
+            return cached["data"]
+        if exc.response.status_code == 429:
             raise HTTPException(
                 status_code=503,
-                detail="Weather provider is rate-limiting requests. Please try again in a few minutes.",
+                detail="Weather provider rate limit reached. Please try again later.",
                 headers={"Retry-After": "300"},
             ) from exc
         raise HTTPException(
             status_code=502,
-            detail="Weather provider is temporarily unavailable. Please try again.",
+            detail="Weather provider request failed. Check the API key and account quota.",
         ) from exc
-    except httpx.HTTPError as exc:
-        print(
-            f"Open-Meteo request failed: {type(exc).__name__}: {exc}",
-            flush=True,
-        )
-        weather_failures[district_name] = {
-            "retry_after": time.monotonic() + 60,
-        }
+    except (httpx.HTTPError, ValueError) as exc:
+        print(f"Visual Crossing request failed: {type(exc).__name__}", flush=True)
         if cached:
             return cached["data"]
-        raise HTTPException(
-            status_code=502,
-            detail="Weather provider is temporarily unavailable. Please try again.",
-        ) from exc
+        raise HTTPException(status_code=502, detail="Weather provider is temporarily unavailable.") from exc
+    current_raw = weather_data.get("currentConditions") or {}
+    days_raw = weather_data.get("days") or []
+    if not current_raw or not days_raw:
+        raise HTTPException(status_code=502, detail="Weather provider returned incomplete weather data.")
+    def weather_code(icon):
+        icon = (icon or "").lower()
+        if "thunder" in icon:
+            return 95
+        if "snow" in icon:
+            return 71
+        if "rain" in icon or "showers" in icon:
+            return 61
+        if "fog" in icon:
+            return 45
+        if "cloud" in icon:
+            return 3 if "overcast" in icon else 2
+        return 0
+    current = {
+        "temperature_2m": current_raw.get("temp"),
+        "relative_humidity_2m": current_raw.get("humidity"),
+        "apparent_temperature": current_raw.get("feelslike"),
+        "is_day": 0 if "night" in (current_raw.get("icon") or "").lower() else 1,
+        "precipitation": current_raw.get("precip", 0),
+        "weather_code": weather_code(current_raw.get("icon")),
+        "wind_speed_10m": current_raw.get("windspeed"),
+        "conditions": current_raw.get("conditions"),
+        "datetime": current_raw.get("datetime"),
+    }
+    daily = {
+        "time": [day.get("datetime") for day in days_raw],
+        "weather_code": [weather_code(day.get("icon")) for day in days_raw],
+        "temperature_2m_max": [day.get("tempmax") for day in days_raw],
+        "temperature_2m_min": [day.get("tempmin") for day in days_raw],
+        "precipitation_probability_max": [day.get("precipprob") for day in days_raw],
+    }
     result = {
         "district": district_name,
         "coordinates": coordinates,
-        "source": "Open-Meteo",
+        "source": "Visual Crossing",
         "data_mode": "live_api",
-        "current": weather_data.get("current"),
-        "daily": weather_data.get("daily"),
+        "current": current,
+        "daily": daily,
     }
     weather_cache[district_name] = {
         "timestamp": time.monotonic(),
@@ -211,4 +204,3 @@ async def get_weather(district: str):
     }
     weather_failures.pop(district_name, None)
     return result
-

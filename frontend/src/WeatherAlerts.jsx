@@ -1,5 +1,5 @@
-﻿import { useCallback, useEffect, useState } from "react";
-const API_BASE = "https://bihar-weather-api.onrender.com";
+import { useCallback, useEffect, useState } from "react";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "https://bihar-weather-api.onrender.com").replace(/\/$/, "");
 function getAlerts(data) {
   const alerts = [];
   const district = data.district;
@@ -15,14 +15,14 @@ function getAlerts(data) {
       district,
       level: "High",
       type: "High temperature",
-      detail: `Forecast maximum ${highestTemp}Â°C tak hai.`,
+      detail: `Forecast maximum ${highestTemp}°C tak hai.`,
     });
   } else if (highestTemp !== null && highestTemp >= 35) {
     alerts.push({
       district,
       level: "Moderate",
       type: "Warm weather",
-      detail: `Forecast maximum ${highestTemp}Â°C tak hai.`,
+      detail: `Forecast maximum ${highestTemp}°C tak hai.`,
     });
   }
   if (highestRain !== null && highestRain >= 70) {
@@ -78,7 +78,9 @@ export default function WeatherAlerts() {
       const names = districtData.districts || [];
       setDistricts(names);
       const results = await Promise.allSettled(
-        names.map(async (name) => {
+        names.map(async (name, index) => {
+          // Requests ko stagger karo taaki sab ek saath na jayen.
+          await new Promise((resolve) => setTimeout(resolve, index * 1000));
           const response = await fetch(
             `${API_BASE}/api/weather/${encodeURIComponent(name)}`
           );
@@ -195,7 +197,7 @@ export default function WeatherAlerts() {
                     hourCycle: "h23",
             minute: "2-digit",
           })}
-          {" Â· "}Showing {visibleAlerts.length} of {alerts.length} alert cards
+          {" · "}Showing {visibleAlerts.length} of {alerts.length} alert cards
         </p>
       )}
       {error && (
@@ -250,10 +252,9 @@ export default function WeatherAlerts() {
         ))}
       </div>
       <p className="footnote" style={{ marginTop: 16 }}>
-        Source: Open-Meteo forecast API. Thresholds are simple project rules,
+        Source: Visual Crossing forecast API. Thresholds are simple project rules,
         not official public safety guidance.
       </p>
     </section>
   );
 }
-

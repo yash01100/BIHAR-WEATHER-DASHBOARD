@@ -185,7 +185,7 @@ export default function WeatherComparison() {
         </div>
       )}
       <p className="footnote">
-        Source: Open-Meteo API. Values provider ke latest available weather data par based hain.
+        Source: Visual Crossing API. Values provider ke latest available weather data par based hain.
       </p>
     </section>
   );
