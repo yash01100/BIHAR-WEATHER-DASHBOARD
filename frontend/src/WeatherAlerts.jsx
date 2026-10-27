@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-const API_BASE = "http://127.0.0.1:8000";
+﻿import { useCallback, useEffect, useState } from "react";
+const API_BASE = "https://bihar-weather-api.onrender.com";
 function getAlerts(data) {
   const alerts = [];
   const district = data.district;
@@ -15,14 +15,14 @@ function getAlerts(data) {
       district,
       level: "High",
       type: "High temperature",
-      detail: `Forecast maximum ${highestTemp}°C tak hai.`,
+      detail: `Forecast maximum ${highestTemp}Â°C tak hai.`,
     });
   } else if (highestTemp !== null && highestTemp >= 35) {
     alerts.push({
       district,
       level: "Moderate",
       type: "Warm weather",
-      detail: `Forecast maximum ${highestTemp}°C tak hai.`,
+      detail: `Forecast maximum ${highestTemp}Â°C tak hai.`,
     });
   }
   if (highestRain !== null && highestRain >= 70) {
@@ -195,7 +195,7 @@ export default function WeatherAlerts() {
                     hourCycle: "h23",
             minute: "2-digit",
           })}
-          {" · "}Showing {visibleAlerts.length} of {alerts.length} alert cards
+          {" Â· "}Showing {visibleAlerts.length} of {alerts.length} alert cards
         </p>
       )}
       {error && (
@@ -256,3 +256,4 @@ export default function WeatherAlerts() {
     </section>
   );
 }
+
