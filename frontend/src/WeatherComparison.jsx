@@ -8,7 +8,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "https://bihar-weather-api.onrender.com").replace(/\/$/, "");
 export default function WeatherComparison() {
   const [districts, setDistricts] = useState([]);
   const [selected, setSelected] = useState(["Patna", "Gaya", "Bhagalpur"]);
