@@ -5,26 +5,26 @@ import WeatherAlerts from "./WeatherAlerts";
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "https://bihar-weather-api.onrender.com").replace(/\/$/, "");
 
 function getWeatherInfo(code) {
-  if (code === 0) return { condition: "Clear Sky", icon: "☀️" };
-  if (code === 1) return { condition: "Mainly Clear", icon: "🌤️" };
-  if (code === 2) return { condition: "Partly Cloudy", icon: "⛅" };
-  if (code === 3) return { condition: "Overcast", icon: "☁️" };
+  if (code === 0) return { condition: "Clear Sky", icon: "â˜€ï¸" };
+  if (code === 1) return { condition: "Mainly Clear", icon: "ðŸŒ¤ï¸" };
+  if (code === 2) return { condition: "Partly Cloudy", icon: "â›…" };
+  if (code === 3) return { condition: "Overcast", icon: "â˜ï¸" };
   if ([45, 48].includes(code)) {
-    return { condition: "Foggy", icon: "🌫️" };
+    return { condition: "Foggy", icon: "ðŸŒ«ï¸" };
   }
   if ([51, 53, 55, 56, 57].includes(code)) {
-    return { condition: "Drizzle", icon: "🌦️" };
+    return { condition: "Drizzle", icon: "ðŸŒ¦ï¸" };
   }
   if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
-    return { condition: "Rain", icon: "🌧️" };
+    return { condition: "Rain", icon: "ðŸŒ§ï¸" };
   }
   if ([71, 73, 75, 77, 85, 86].includes(code)) {
-    return { condition: "Snow", icon: "❄️" };
+    return { condition: "Snow", icon: "â„ï¸" };
   }
   if ([95, 96, 99].includes(code)) {
-    return { condition: "Thunderstorm", icon: "⛈️" };
+    return { condition: "Thunderstorm", icon: "â›ˆï¸" };
   }
-  return { condition: "Conditions Unavailable", icon: "🌡️" };
+  return { condition: "Conditions Unavailable", icon: "ðŸŒ¡ï¸" };
 }
 function formatDay(dateString, index) {
   if (index === 0) return "Today";
@@ -162,7 +162,7 @@ function App() {
   const daily = weatherData?.daily;
   const weatherInfo = current
     ? getWeatherInfo(current.weather_code)
-    : { condition: "Loading...", icon: "🌤️" };
+    : { condition: "Loading...", icon: "ðŸŒ¤ï¸" };
   const forecast = daily
     ? daily.time.map((date, index) => ({
         day: formatDay(date, index),
@@ -197,14 +197,14 @@ function App() {
       insightText = `Wind speed ${wind} km/h report hui hai. Local advisories aur updated weather conditions par nazar rakhein.`;
     } else {
       insightTitle = "Current conditions";
-      insightText = `${district} mein ${weatherInfo.condition.toLowerCase()} conditions hain. Temperature ${current.temperature_2m}°C aur humidity ${humidity}% report hui hai.`;
+      insightText = `${district} mein ${weatherInfo.condition.toLowerCase()} conditions hain. Temperature ${current.temperature_2m}Â°C aur humidity ${humidity}% report hui hai.`;
     }
   }
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <a className="brand" href="#overview">
-          <span className="brand-icon">☀</span>
+          <span className="brand-icon">â˜€</span>
           <span>
             <strong>
               BIHAR<span className="brand-accent">WX</span>
@@ -215,16 +215,16 @@ function App() {
         <p className="nav-heading">WORKSPACE</p>
         <nav className="navigation">
           <a className="nav-link active" href="#overview">
-            ▦ <span>Overview</span>
+            â–¦ <span>Overview</span>
           </a>
           <a className="nav-link" href="#forecast">
-            ◷ <span>Forecast</span>
+            â—· <span>Forecast</span>
           </a>
           <a className="nav-link" href="#districts">
-            ⌖ <span>District Explorer</span>
+            âŒ– <span>District Explorer</span>
           </a>
           <a className="nav-link" href="#insights">
-            ✧ <span>Weather Insights</span>
+            âœ§ <span>Weather Insights</span>
           </a>
         </nav>
         <div className="sidebar-status">
@@ -257,7 +257,7 @@ function App() {
         </header>
         {error ? (
           <section className="demo-notice" role="alert">
-            <span className="notice-icon">⚠️</span>
+            <span className="notice-icon">âš ï¸</span>
             <div>
               <strong>Weather data unavailable</strong>
               <p>{error}</p>
@@ -269,7 +269,7 @@ function App() {
           </section>
         ) : (
           <section className="demo-notice">
-            <span className="notice-icon">ⓘ</span>
+            <span className="notice-icon">â“˜</span>
             <div>
               <strong>
                 {loading
@@ -300,7 +300,7 @@ function App() {
             </select>
           </div>
           <div className="location-info">
-            <span className="location-icon">⌖</span>
+            <span className="location-icon">âŒ–</span>
             <div>
               <strong>{district}, Bihar</strong>
               <small>
@@ -314,7 +314,7 @@ function App() {
         <section className="weather-hero">
           <div className="hero-copy">
             <p className="eyebrow">
-              CURRENT CONDITIONS · {loading ? "LOADING" : "LIVE DATA"}
+              CURRENT CONDITIONS Â· {loading ? "LOADING" : "LIVE DATA"}
             </p>
             <h2>{district}</h2>
             <p className="condition">
@@ -322,11 +322,11 @@ function App() {
             </p>
             <div className="temperature">
               {current ? current.temperature_2m : "--"}
-              <span>°C</span>
+              <span>Â°C</span>
             </div>
             <p className="temperature-note">
               {current
-                ? `Feels like ${current.apparent_temperature}°C · ${(current.time || current.datetime || "Time unavailable").replace("T", " ")}`
+                ? `Feels like ${current.apparent_temperature}Â°C Â· ${(current.time || current.datetime || "Time unavailable").replace("T", " ")}`
                 : "Temperature will appear when data loads"}
             </p>
           </div>
@@ -338,7 +338,7 @@ function App() {
             <div className="rain rain-two" />
           </div>
           <div className="hero-footer">
-            <span>⌖ {district}, Bihar, India</span>
+            <span>âŒ– {district}, Bihar, India</span>
             <span>Source: {weatherData?.source || "Weather API"}</span>
             <span>
               Last Updated:{" "}
@@ -355,19 +355,19 @@ function App() {
         </section>
         <section className="metrics-grid">
           <Metric
-            icon="💧"
+            icon="ðŸ’§"
             label="Humidity"
             value={current ? `${current.relative_humidity_2m}%` : "--"}
             detail="Relative humidity"
           />
           <Metric
-            icon="🌧️"
+            icon="ðŸŒ§ï¸"
             label="Precipitation"
             value={currentRain != null ? `${currentRain} mm` : "--"}
             detail="Current reported interval"
           />
           <Metric
-            icon="💨"
+            icon="ðŸ’¨"
             label="Wind speed"
             value={current ? `${wind} km/h` : "--"}
             detail="Current wind speed"
@@ -395,12 +395,15 @@ function App() {
             {forecast.map((item) => (
               <article className="forecast-card" key={item.date}>
                 <p>{item.day}</p>
+<small style={{ display: "block", fontSize: "0.78rem", opacity: 0.75, marginTop: "-8px", marginBottom: "8px" }}>
+  {new Date(`${item.date}T12:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+</small>
                 <span className="forecast-icon">{item.icon}</span>
                 <h3>
-                  {item.max !== null ? `${item.max}°C` : "--"}
+                  {item.max !== null ? `${item.max}Â°C` : "--"}
                 </h3>
                 <small>
-                  Low: {item.min !== null ? `${item.min}°C` : "--"}
+                  Low: {item.min !== null ? `${item.min}Â°C` : "--"}
                 </small>
                 <small>
                   Rain chance: {item.rain !== null ? `${item.rain}%` : "N/A"}
@@ -425,7 +428,7 @@ function App() {
             <span className="section-badge">RULE-BASED</span>
           </div>
           <article className="insight-card">
-            <span className="insight-icon">✧</span>
+            <span className="insight-icon">âœ§</span>
             <div>
               <h3>{loading ? "Analysing weather..." : insightTitle}</h3>
               <p>
@@ -443,7 +446,7 @@ function App() {
           </p>
         </section>
         <footer className="page-footer">
-          Bihar Weather Intelligence Dashboard <span>·</span> Educational
+          Bihar Weather Intelligence Dashboard <span>Â·</span> Educational
           prototype
         </footer>
       </main>
