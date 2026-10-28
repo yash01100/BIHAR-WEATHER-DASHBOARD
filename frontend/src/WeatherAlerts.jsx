@@ -77,19 +77,29 @@ export default function WeatherAlerts() {
       const districtData = await districtResponse.json();
       const names = districtData.districts || [];
       setDistricts(names);
-      const results = await Promise.allSettled(
-        names.map(async (name, index) => {
-          // Requests ko stagger karo taaki sab ek saath na jayen.
-          await new Promise((resolve) => setTimeout(resolve, index * 1000));
-          const response = await fetch(
-            `${API_BASE}/api/weather/${encodeURIComponent(name)}`
-          );
-          if (!response.ok) throw new Error(`${name} ka data load nahi hua.`);
-          const data = await response.json();
-          if (!data.current || !data.daily) {
-            throw new Error(`${name} ka forecast incomplete hai.`);
+      const results = new Array(names.length);
+      let nextIndex = 0;
+      const workerCount = Math.min(6, names.length);
+      await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+          while (true) {
+            const index = nextIndex++;
+            if (index >= names.length) return;
+            const name = names[index];
+            try {
+              const response = await fetch(
+                `${API_BASE}/api/weather/${encodeURIComponent(name)}`
+              );
+              if (!response.ok) throw new Error(`${name} ka data load nahi hua.`);
+              const data = await response.json();
+              if (!data.current || !data.daily) {
+                throw new Error(`${name} ka forecast incomplete hai.`);
+              }
+              results[index] = { status: "fulfilled", value: getAlerts(data) };
+            } catch (error) {
+              results[index] = { status: "rejected", reason: error };
+            }
           }
-          return getAlerts(data);
         })
       );
       const successfulAlerts = results
@@ -252,8 +262,7 @@ export default function WeatherAlerts() {
         ))}
       </div>
       <p className="footnote" style={{ marginTop: 16 }}>
-        Source: Visual Crossing forecast API. Thresholds are simple project rules,
-        not official public safety guidance.
+        Source: Configured weather API. Alert thresholds are project rules, not official public safety guidance.
       </p>
     </section>
   );
