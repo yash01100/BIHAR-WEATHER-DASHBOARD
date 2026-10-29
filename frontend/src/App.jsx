@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import "./App.css";
 import WeatherComparison from "./WeatherComparison";
 import WeatherAlerts from "./WeatherAlerts";
+import WeatherMaps from "./WeatherMaps";
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "https://bihar-weather-api.onrender.com").replace(/\/$/, "");
 
 function getWeatherInfo(code) {
@@ -247,7 +248,7 @@ function App() {
         </header>
         {error ? (
           <section className="demo-notice" role="alert">
-            <span className="notice-icon">ⓘ</span>
+            <span className="notice-icon">🌤</span>
             <div>
               <strong>Weather data unavailable</strong>
               <p>{error}</p>
@@ -259,7 +260,7 @@ function App() {
           </section>
         ) : (
           <section className="demo-notice">
-            <span className="notice-icon">ⓘ</span>
+            <span className="notice-icon">🌤</span>
             <div>
               <strong>
                 {loading
@@ -290,7 +291,7 @@ function App() {
             </select>
           </div>
           <div className="location-info">
-            <span className="location-icon">⌖</span>
+            <span className="location-icon">📍</span>
             <div>
               <strong>{district}, Bihar</strong>
               <small>
@@ -369,7 +370,8 @@ function App() {
         </section>
         <WeatherAlerts />
         <WeatherComparison />
-        <section className="section-block" id="forecast">
+        <WeatherMaps />
+<section className="section-block" id="forecast">
           <div className="section-heading">
             <div>
               <p className="eyebrow">UPCOMING OUTLOOK</p>
@@ -454,3 +456,6 @@ function Metric({ icon, label, value, detail }) {
   );
 }
 export default App;
+
+
+
