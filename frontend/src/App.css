@@ -1098,3 +1098,159 @@ button:hover {
 .section-heading h2 {
   letter-spacing: -0.5px;
 }
+/* FINAL POLISH: FORECAST, ALERTS & TEMPERATURE CHART */
+#forecast,
+#alerts,
+#comparison {
+  margin-top: 36px;
+  scroll-margin-top: 24px;
+  min-width: 0;
+}
+#forecast .section-heading,
+#alerts .section-heading,
+#comparison .section-heading {
+  margin-bottom: 20px;
+}
+#forecast .section-heading h2,
+#alerts .section-heading h2,
+#comparison .section-heading h2 {
+  font-size: clamp(19px, 2vw, 23px);
+  line-height: 1.4;
+}
+#forecast .forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+#forecast .forecast-card {
+  min-width: 0;
+  min-height: 215px;
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  background: radial-gradient(circle at 50% 0%, rgba(69,255,224,.06), transparent 55%), #101010;
+  border: 1px solid #292929;
+  border-radius: 16px;
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+#forecast .forecast-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(69,255,224,.48);
+}
+#forecast .forecast-card p {
+  margin: 0;
+  color: #f0f4f5;
+  font-size: 13px;
+  font-weight: 700;
+}
+#forecast .forecast-card > small {
+  display: block;
+  margin: 0 !important;
+  color: #a4adb0;
+  font-size: 11px !important;
+  line-height: 1.5;
+}
+#forecast .forecast-icon {
+  font-size: 34px;
+  line-height: 1.3;
+}
+#forecast .forecast-card h3 {
+  margin: 0;
+  color: #f5ffff;
+  font-size: 23px;
+}
+#forecast .footnote,
+#alerts .footnote,
+#comparison .footnote {
+  margin-top: 15px;
+  line-height: 1.7;
+}
+#alerts button,
+#comparison button {
+  min-height: 38px;
+  padding: 9px 13px;
+  border: 1px solid #333b3b;
+  border-radius: 9px;
+  background: #141b1a;
+  color: #e8f4f2;
+}
+#alerts button:hover,
+#comparison button:hover {
+  border-color: rgba(69,255,224,.48);
+}
+#alerts select,
+#comparison select {
+  max-width: 100%;
+  min-height: 38px;
+  background: #111111;
+  color: #f5f5f5;
+  border: 1px solid #333333;
+  border-radius: 9px;
+}
+#comparison {
+  overflow: hidden;
+}
+#comparison .recharts-responsive-container {
+  min-width: 0;
+  max-width: 100%;
+}
+#comparison .recharts-cartesian-grid-horizontal line,
+#comparison .recharts-cartesian-grid-vertical line {
+  stroke: #292f30;
+}
+#comparison .recharts-text {
+  fill: #aeb9bb;
+  font-size: 11px;
+}
+#comparison .recharts-default-tooltip {
+  background: #111615 !important;
+  border: 1px solid #3b4845 !important;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.35);
+}
+#comparison .recharts-tooltip-label {
+  color: #f0fffc !important;
+}
+#comparison .recharts-tooltip-item {
+  color: #c8d7d4 !important;
+}
+@media (max-width: 1050px) {
+  #forecast .forecast-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  #forecast,
+  #alerts,
+  #comparison {
+    margin-top: 30px;
+  }
+  #forecast .forecast-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  #forecast .forecast-card {
+    min-height: 195px;
+    padding: 17px 10px;
+  }
+  #forecast .forecast-icon {
+    font-size: 31px;
+  }
+  #forecast .forecast-card h3 {
+    font-size: 21px;
+  }
+  #forecast .section-heading,
+  #alerts .section-heading,
+  #comparison .section-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #forecast .forecast-card {
+    transition: none;
+  }
+}
