@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
+import { fetchWeather as fetchDistrictWeather } from "./weatherApi";
 import "./App.css";
 import WeatherComparison from "./WeatherComparison";
 import WeatherAlerts from "./WeatherAlerts";
@@ -12,7 +13,7 @@ function getWeatherInfo(code) {
   if (code === 1) return { condition: "Mainly Clear", icon: "\u2600\ufe0f" };
   if (code === 2) return { condition: "Partly Cloudy", icon: "\u26c5" };
   if (code === 3) return { condition: "Overcast", icon: "\u2601\ufe0f" };
-  if ([45, 48].includes(code)) return { condition: "Foggy", icon: "\u{1F301}" };
+  if ([45, 48].includes(code)) return { condition: "Foggy", icon: "\u{1F32B}\uFE0F" };
   if ([51, 53, 55, 56, 57].includes(code)) return { condition: "Drizzle", icon: "\u{1F326}\uFE0F" };
   if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return { condition: "Rain", icon: "\u{1F327}\uFE0F" };
   if ([71, 73, 75, 77, 85, 86].includes(code)) return { condition: "Snow", icon: "\u{1F328}\uFE0F" };
@@ -114,17 +115,8 @@ function App() {
       try {
         let data;
         try {
-          const response = await fetch(
-            `${API_BASE}/api/weather/${encodeURIComponent(district)}`,
-            { signal: controller.signal }
-          );
-          if (!response.ok) {
-            throw new Error(`Backend weather API error: ${response.status}`);
-          }
-          data = await response.json();
-          if (!data.current || !data.daily) {
-            throw new Error("Backend response mein weather data incomplete hai.");
-          }
+          data = await fetchDistrictWeather(district);
+          if (controller.signal.aborted) return;
         } catch (backendError) {
           if (backendError.name === "AbortError") throw backendError;
           const coordinateResponse = await fetch(
@@ -249,7 +241,7 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <a className="brand" href="#overview">
-          <span className="brand-icon">☀</span>
+          <span className="brand-icon">☀️</span>
           <span>
             <strong>
               BIHAR<span className="brand-accent">WX</span>
@@ -304,7 +296,7 @@ function App() {
         </header>
         {error ? (
           <section className="demo-notice" role="alert">
-            <span className="notice-icon">🌤</span>
+            <span className="notice-icon">🌤️</span>
             <div>
               <strong>Weather data unavailable</strong>
               <p>{error}</p>
@@ -316,7 +308,7 @@ function App() {
           </section>
         ) : (
           <section className="demo-notice">
-            <span className="notice-icon">🌤</span>
+            <span className="notice-icon">🌤️</span>
             <div>
               <strong>
                 {loading
@@ -393,9 +385,8 @@ function App() {
                 </div>
               </div>
               <p className="prediction-disclaimer">
-                Experimental ML estimate. Trained using Open-Meteo historical
-                data and supplied with Visual Crossing input data. Provider
-                differences may affect results. This is not an official IMD forecast.
+                Experimental ML estimate. Trained and supplied with Open-Meteo
+                Historical Archive data. This is not an official IMD forecast.
               </p>
             </>
           ) : (
@@ -558,13 +549,3 @@ function Metric({ icon, label, value, detail }) {
   );
 }
 export default App;
-
-
-
-
-
-
-
-
-
-

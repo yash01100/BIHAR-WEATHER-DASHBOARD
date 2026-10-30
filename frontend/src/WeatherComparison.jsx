@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
+import { fetchWeather } from "./weatherApi";
 import {
   ResponsiveContainer,
   BarChart,
@@ -51,13 +52,7 @@ export default function WeatherComparison() {
     try {
       const results = await Promise.all(
         names.map(async (name) => {
-          const response = await fetch(
-            `${API_BASE}/api/weather/${encodeURIComponent(name)}`
-          );
-          if (!response.ok) {
-            throw new Error(`${name} ka weather fetch nahi hua.`);
-          }
-          const data = await response.json();
+          const data = await fetchWeather(name);
           if (!data.current) throw new Error(`${name} ka data incomplete hai.`);
           return {
             district: name,
@@ -185,7 +180,7 @@ export default function WeatherComparison() {
         </div>
       )}
       <p className="footnote">
-        Source: Visual Crossing API. Values provider ke latest available weather data par based hain.
+        Source: Open-Meteo API. Values provider ke latest available weather data par based hain.
       </p>
     </section>
   );

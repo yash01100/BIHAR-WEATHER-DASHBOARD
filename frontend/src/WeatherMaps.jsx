@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useState } from "react";
+import { fetchWeather } from "./weatherApi";
 import {
   CircleMarker,
   MapContainer,
@@ -44,16 +45,14 @@ function readCoordinates(data) {
   return null;
 }
 function weatherEmoji(code) {
-  if (code == null) return "🌡️";
-  if (code === 0) return "☀️";
-  if ([1, 2].includes(code)) return "🌤️";
-  if (code === 3) return "☁️";
-  if ([45, 48].includes(code)) return "🌫️";
-  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) {
-    return "🌧️";
-  }
-  if ([95, 96, 99].includes(code)) return "⛈️";
-  return "🌡️";
+  if (code == null) return "???";
+  if (code === 0) return "??";
+  if ([1, 2].includes(code)) return "???";
+  if (code === 3) return "??";
+  if ([45, 48].includes(code)) return "???";
+  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return "???";
+  if ([95, 96, 99].includes(code)) return "??";
+  return "???";
 }
 function readWeatherCode(data) {
   const value =
@@ -97,7 +96,7 @@ function DistrictWeatherMap({ districts, loading, error }) {
   return (
     <div className="weather-map-canvas">
       <div className="weather-map-search">
-        <span aria-hidden="true">⌕</span>
+        <span aria-hidden="true">×</span>
         <input
           type="search"
           value={search}
@@ -204,7 +203,7 @@ function DistrictWeatherMap({ districts, loading, error }) {
         ))}
       </MapContainer>
       {loading && (
-        <div className="weather-map-status">Loading district weather…</div>
+        <div className="weather-map-status">Loading district weather...</div>
       )}
       {!loading && districts.length === 0 && (
         <div className="weather-map-status">
@@ -280,7 +279,7 @@ function RainRadarMap({ districts }) {
     <>
       <div className="weather-map-canvas">
         <div className="weather-map-search">
-          <span aria-hidden="true">⌕</span>
+          <span aria-hidden="true">×</span>
           <input
             type="search"
             value={search}
@@ -397,7 +396,7 @@ function RainRadarMap({ districts }) {
           ))}
         </MapContainer>
         {loading && (
-          <div className="weather-map-status">Loading radar…</div>
+          <div className="weather-map-status">Loading radar...</div>
         )}
         {error && (
           <div className="weather-map-status">
@@ -408,7 +407,7 @@ function RainRadarMap({ districts }) {
       <div className="radar-map-controls">
         <span>
           {loading
-            ? "Loading radar…"
+            ? "Loading radar..."
             : radarTime
               ? `Radar frame: ${radarTime}`
               : "Radar timestamp unavailable"}
@@ -418,7 +417,7 @@ function RainRadarMap({ districts }) {
           onClick={() => setRefreshKey((value) => value + 1)}
           disabled={loading}
         >
-          {loading ? "Loading…" : "Refresh radar"}
+          {loading ? "Loading..." : "Refresh radar"}
         </button>
       </div>
       <div className="weather-map-attribution">
@@ -465,12 +464,8 @@ export default function WeatherMaps() {
                 : item?.name ?? item?.district ?? item?.district_name;
             if (!name) continue;
             try {
-              const weatherResponse = await fetch(
-                `${API_BASE}/api/weather/${encodeURIComponent(name)}`,
-                { signal: controller.signal }
-              );
-              if (!weatherResponse.ok) return;
-              const data = await weatherResponse.json();
+              const data = await fetchWeather(name);
+              if (controller.signal.aborted) return;
               const coords = readCoordinates(data);
               if (coords) {
                 results.push({
@@ -527,7 +522,7 @@ export default function WeatherMaps() {
           onClick={() => setRefreshKey((value) => value + 1)}
           disabled={loading}
         >
-          {loading ? "Loading…" : "Refresh district map"}
+          {loading ? "Loading..." : "Refresh district map"}
         </button>
       </div>
       <div className="weather-maps-grid">
@@ -570,4 +565,3 @@ export default function WeatherMaps() {
     </section>
   );
 }
-

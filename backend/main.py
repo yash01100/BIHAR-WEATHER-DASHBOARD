@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
-import os
 from pathlib import Path as FilePath
 from dotenv import load_dotenv
 import time
@@ -114,86 +113,104 @@ async def get_weather(district: str):
         None,
     )
     if district_name is None:
-        raise HTTPException(status_code=404, detail="District not found. Check /api/districts.")
+        raise HTTPException(
+            status_code=404,
+            detail="District not found. Check /api/districts.",
+        )
     now = time.monotonic()
     cached = weather_cache.get(district_name)
     if cached and now - cached["timestamp"] < CACHE_TTL_SECONDS:
         return cached["data"]
-    api_key = os.getenv("VISUAL_CROSSING_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="Weather API key is not configured on the server.")
     coordinates = DISTRICTS[district_name]
-    location = f'{coordinates["latitude"]},{coordinates["longitude"]}'
-    url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{location}"
+    url = "https://api.open-meteo.com/v1/forecast"
     params = {
-        "key": api_key,
-        "unitGroup": "metric",
-        "include": "current,days",
-        "contentType": "json",
+        "latitude": coordinates["latitude"],
+        "longitude": coordinates["longitude"],
+        "current": (
+            "temperature_2m,relative_humidity_2m,"
+            "apparent_temperature,is_day,precipitation,"
+            "weather_code,wind_speed_10m"
+        ),
+        "daily": (
+            "weather_code,temperature_2m_max,"
+            "temperature_2m_min,precipitation_probability_max"
+        ),
+        "timezone": "Asia/Kolkata",
+        "forecast_days": 7,
     }
     try:
-        async with httpx.AsyncClient(timeout=25.0) as client:
+        async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             weather_data = response.json()
-    except httpx.HTTPStatusError as exc:
-        print(f"Visual Crossing request failed: HTTP {exc.response.status_code}", flush=True)
+    except (httpx.HTTPError, ValueError) as exc:
+        print(
+            f"Open-Meteo weather request failed: {type(exc).__name__}",
+            flush=True,
+        )
         if cached:
             return cached["data"]
-        if exc.response.status_code == 429:
-            raise HTTPException(
-                status_code=503,
-                detail="Weather provider rate limit reached. Please try again later.",
-                headers={"Retry-After": "300"},
-            ) from exc
         raise HTTPException(
             status_code=502,
-            detail="Weather provider request failed. Check the API key and account quota.",
+            detail="Weather provider is temporarily unavailable.",
         ) from exc
-    except (httpx.HTTPError, ValueError) as exc:
-        print(f"Visual Crossing request failed: {type(exc).__name__}", flush=True)
-        if cached:
-            return cached["data"]
-        raise HTTPException(status_code=502, detail="Weather provider is temporarily unavailable.") from exc
-    current_raw = weather_data.get("currentConditions") or {}
-    days_raw = weather_data.get("days") or []
-    if not current_raw or not days_raw:
-        raise HTTPException(status_code=502, detail="Weather provider returned incomplete weather data.")
-    def weather_code(icon):
-        icon = (icon or "").lower()
-        if "thunder" in icon:
-            return 95
-        if "snow" in icon:
-            return 71
-        if "rain" in icon or "showers" in icon:
-            return 61
-        if "fog" in icon:
-            return 45
-        if "cloud" in icon:
-            return 3 if "overcast" in icon else 2
-        return 0
+    current_raw = weather_data.get("current") or {}
+    daily_raw = weather_data.get("daily") or {}
+    if not current_raw or not daily_raw:
+        raise HTTPException(
+            status_code=502,
+            detail="Weather provider returned incomplete weather data.",
+        )
+    weather_descriptions = {
+        0: "Clear sky",
+        1: "Mainly clear",
+        2: "Partly cloudy",
+        3: "Overcast",
+        45: "Fog",
+        48: "Depositing rime fog",
+        51: "Light drizzle",
+        53: "Moderate drizzle",
+        55: "Dense drizzle",
+        61: "Slight rain",
+        63: "Moderate rain",
+        65: "Heavy rain",
+        71: "Slight snow",
+        73: "Moderate snow",
+        75: "Heavy snow",
+        80: "Rain showers",
+        81: "Moderate rain showers",
+        82: "Violent rain showers",
+        95: "Thunderstorm",
+        96: "Thunderstorm with hail",
+        99: "Thunderstorm with heavy hail",
+    }
+    weather_code_value = current_raw.get("weather_code")
     current = {
-        "temperature_2m": current_raw.get("temp"),
-        "relative_humidity_2m": current_raw.get("humidity"),
-        "apparent_temperature": current_raw.get("feelslike"),
-        "is_day": 0 if "night" in (current_raw.get("icon") or "").lower() else 1,
-        "precipitation": current_raw.get("precip", 0),
-        "weather_code": weather_code(current_raw.get("icon")),
-        "wind_speed_10m": current_raw.get("windspeed"),
-        "conditions": current_raw.get("conditions"),
-        "datetime": current_raw.get("datetime"),
+        "temperature_2m": current_raw.get("temperature_2m"),
+        "relative_humidity_2m": current_raw.get("relative_humidity_2m"),
+        "apparent_temperature": current_raw.get("apparent_temperature"),
+        "is_day": current_raw.get("is_day"),
+        "precipitation": current_raw.get("precipitation", 0),
+        "weather_code": weather_code_value,
+        "wind_speed_10m": current_raw.get("wind_speed_10m"),
+        "conditions": weather_descriptions.get(
+            weather_code_value, "Unknown"
+        ),
+        "datetime": current_raw.get("time"),
     }
     daily = {
-        "time": [day.get("datetime") for day in days_raw],
-        "weather_code": [weather_code(day.get("icon")) for day in days_raw],
-        "temperature_2m_max": [day.get("tempmax") for day in days_raw],
-        "temperature_2m_min": [day.get("tempmin") for day in days_raw],
-        "precipitation_probability_max": [day.get("precipprob") for day in days_raw],
+        "time": daily_raw.get("time", []),
+        "weather_code": daily_raw.get("weather_code", []),
+        "temperature_2m_max": daily_raw.get("temperature_2m_max", []),
+        "temperature_2m_min": daily_raw.get("temperature_2m_min", []),
+        "precipitation_probability_max": daily_raw.get(
+            "precipitation_probability_max", []
+        ),
     }
     result = {
         "district": district_name,
         "coordinates": coordinates,
-        "source": "Visual Crossing",
+        "source": "Open-Meteo",
         "data_mode": "live_api",
         "current": current,
         "daily": daily,
@@ -231,56 +248,35 @@ async def get_historical_weather(
             status_code=400,
             detail="Maximum historical date range is 31 days.",
         )
-    api_key = os.getenv("VISUAL_CROSSING_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Weather API key is not configured on the server.",
-        )
     coordinates = DISTRICTS[district_name]
-    location = f'{coordinates["latitude"]},{coordinates["longitude"]}'
-    url = (
-        "https://weather.visualcrossing.com/"
-        f"VisualCrossingWebServices/rest/services/timeline/"
-        f"{location}/{start_date.isoformat()}/{end_date.isoformat()}"
-    )
+    url = "https://archive-api.open-meteo.com/v1/archive"
     params = {
-        "key": api_key,
-        "unitGroup": "metric",
-        "include": "days",
-        "elements": "datetime,tempmax,tempmin,temp,precip,humidity",
-        "contentType": "json",
+        "latitude": coordinates["latitude"],
+        "longitude": coordinates["longitude"],
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "daily": (
+            "temperature_2m_max,temperature_2m_min,"
+            "temperature_2m_mean,precipitation_sum,relative_humidity_2m_mean"
+        ),
+        "timezone": "Asia/Kolkata",
     }
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             weather_data = response.json()
-    except httpx.HTTPStatusError as exc:
-        print(
-            f"Historical weather request failed: HTTP {exc.response.status_code}",
-            flush=True,
-        )
-        if exc.response.status_code == 429:
-            raise HTTPException(
-                status_code=503,
-                detail="Weather provider rate limit reached. Please try again later.",
-                headers={"Retry-After": "300"},
-            ) from exc
-        raise HTTPException(
-            status_code=502,
-            detail="Historical weather provider request failed. Check API access and quota.",
-        ) from exc
     except (httpx.HTTPError, ValueError) as exc:
         print(
-            f"Historical weather request failed: {type(exc).__name__}",
+            f"Open-Meteo historical request failed: {type(exc).__name__}",
             flush=True,
         )
         raise HTTPException(
             status_code=502,
             detail="Historical weather provider is temporarily unavailable.",
         ) from exc
-    days = weather_data.get("days") or []
+    daily_raw = weather_data.get("daily") or {}
+    days = daily_raw.get("time") or []
     if not days:
         raise HTTPException(
             status_code=502,
@@ -288,18 +284,18 @@ async def get_historical_weather(
         )
     return {
         "district": district_name,
-        "source": "Visual Crossing",
+        "source": "Open-Meteo Historical Archive",
         "data_mode": "historical_data",
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "record_count": len(days),
         "daily": {
-            "time": [day.get("datetime") for day in days],
-            "temperature_max": [day.get("tempmax") for day in days],
-            "temperature_min": [day.get("tempmin") for day in days],
-            "temperature_avg": [day.get("temp") for day in days],
-            "rainfall": [day.get("precip") for day in days],
-            "humidity": [day.get("humidity") for day in days],
+            "time": days,
+            "temperature_max": daily_raw.get("temperature_2m_max", []),
+            "temperature_min": daily_raw.get("temperature_2m_min", []),
+            "temperature_avg": daily_raw.get("temperature_2m_mean", []),
+            "rainfall": daily_raw.get("precipitation_sum", []),
+            "humidity": daily_raw.get("relative_humidity_2m_mean", []),
         },
     }
 from pathlib import Path as FilePath
@@ -375,7 +371,7 @@ async def predict_next_day_rainfall(district: str):
         "district": district_name,
         "prediction_for": (prediction_date + timedelta(days=1)).isoformat(),
         "input_date": prediction_date.isoformat(),
-        "input_source": "Visual Crossing historical daily data",
+        "input_source": "Open-Meteo Historical Archive",
         "training_source": "Open-Meteo Historical Archive",
         "data_mode": "experimental_ml_estimate",
         **prediction,
@@ -386,7 +382,7 @@ async def predict_next_day_rainfall(district: str):
         },
         "disclaimer": (
             "Experimental ML estimate based on historical archive training data. "
-            "Input data comes from Visual Crossing, so provider differences may affect "
-            "results. This is not an official IMD forecast."
+            "Input data comes from Open-Meteo Historical Archive. "
+            "This is not an official IMD forecast."
         ),
     }

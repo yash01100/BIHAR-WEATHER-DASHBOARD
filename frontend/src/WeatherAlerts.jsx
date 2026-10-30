@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useState } from "react";
+import { fetchWeather } from "./weatherApi";
 
 const API_BASE = (
   import.meta.env.VITE_API_BASE_URL ||
@@ -161,15 +162,7 @@ export default function WeatherAlerts() {
             const name = names[index];
 
             try {
-              const response = await fetch(
-                `${API_BASE}/api/weather/${encodeURIComponent(name)}`
-              );
-
-              if (!response.ok) {
-                throw new Error(`${name} ka data load nahi hua.`);
-              }
-
-              const data = await response.json();
+              const data = await fetchWeather(name);
 
               if (!data.current || !data.daily) {
                 throw new Error(`${name} ka forecast incomplete hai.`);
@@ -389,7 +382,7 @@ export default function WeatherAlerts() {
       </div>
 
       <p className="footnote" style={{ marginTop: 16 }}>
-        Source: Visual Crossing weather API through the project backend.
+        Source: Open-Meteo weather API through the project backend.
         Thresholds are project rules, not official public safety guidance.
       </p>
     </section>

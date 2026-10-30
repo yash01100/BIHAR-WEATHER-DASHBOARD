@@ -32,3 +32,7 @@ frontend/src/*.backup*
 frontend/README.md
 frontend/src/assets/react.svg
 frontend/src/assets/vite.svg
+# Temporary development backups
+*.backup*
+*.before-*
+*.invalid-encoding-backup
