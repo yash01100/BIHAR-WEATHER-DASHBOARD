@@ -144,10 +144,19 @@ async def get_weather(district: str):
             response.raise_for_status()
             weather_data = response.json()
     except (httpx.HTTPError, ValueError) as exc:
-        print(
-            f"Open-Meteo weather request failed: {type(exc).__name__}",
-            flush=True,
-        )
+        if isinstance(exc, httpx.HTTPStatusError):
+            print(
+                f"Open-Meteo HTTP error: {exc.response.status_code} | "
+                f"URL: {exc.request.url} | "
+                f"Response: {exc.response.text[:1000]}",
+                flush=True,
+            )
+        else:
+            print(
+                f"Open-Meteo weather request failed: "
+                f"{type(exc).__name__}: {str(exc)}",
+                flush=True,
+            )
         if cached:
             return cached["data"]
         raise HTTPException(
