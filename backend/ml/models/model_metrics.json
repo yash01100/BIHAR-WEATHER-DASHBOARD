@@ -1,0 +1,24 @@
+{
+    "training_period": "2021-01-01 to 2024-12-31",
+    "testing_period": "2025-01-01 to 2025-12-31",
+    "target": "next_day_rainfall",
+    "features": [
+        "district",
+        "temperature_max",
+        "temperature_min",
+        "humidity",
+        "rainfall"
+    ],
+    "districts": 38,
+    "training_rows": 55518,
+    "testing_rows": 13832,
+    "classifier_accuracy": 0.8836755349913245,
+    "classifier_precision": 0.868249163613191,
+    "classifier_recall": 0.8745186136071887,
+    "classifier_f1": 0.8713726117195619,
+    "rainy_test_days": 6232,
+    "regressor_mae": 6.734176023783353,
+    "regressor_rmse": 10.914713780401174,
+    "data_source": "Open-Meteo Historical Archive",
+    "model_note": "Experimental ML estimate; not an official IMD forecast."
+}

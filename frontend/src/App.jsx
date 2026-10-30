@@ -1,8 +1,10 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 import WeatherComparison from "./WeatherComparison";
 import WeatherAlerts from "./WeatherAlerts";
 import WeatherMaps from "./WeatherMaps";
+import HistoricalAnalytics from "./HistoricalAnalytics";
+import ModelPerformance from "./ModelPerformance";
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "https://bihar-weather-api.onrender.com").replace(/\/$/, "");
 
 function getWeatherInfo(code) {
@@ -25,6 +27,9 @@ function formatDay(dateString, index) {
 }
 function App() {
   const [district, setDistrict] = useState("Patna");
+  const [activeSection, setActiveSection] = useState("overview");
+  const navClass = (sectionId) =>
+    `nav-link${activeSection === sectionId ? " active" : ""}`;
   const [districtNames, setDistrictNames] = useState([]);
   const [districtsLoading, setDistrictsLoading] = useState(true);
   useEffect(() => {
@@ -66,6 +71,40 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [prediction, setPrediction] = useState(null);
+  const [predictionLoading, setPredictionLoading] = useState(false);
+  const [predictionError, setPredictionError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    async function fetchPrediction() {
+      setPredictionLoading(true);
+      setPredictionError("");
+      setPrediction(null);
+      try {
+        const response = await fetch(
+          `${API_BASE}/api/prediction/rainfall/${encodeURIComponent(district)}`,
+          { signal: controller.signal }
+        );
+        if (!response.ok) {
+          throw new Error(`Prediction API error: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!controller.signal.aborted) {
+          setPrediction(data);
+        }
+      } catch (err) {
+        if (err.name !== "AbortError" && !controller.signal.aborted) {
+          setPredictionError(err.message || "Prediction load nahi ho paayi.");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setPredictionLoading(false);
+        }
+      }
+    }
+    fetchPrediction();
+    return () => controller.abort();
+  }, [district]);
   useEffect(() => {
     const controller = new AbortController();
     async function fetchWeather() {
@@ -149,7 +188,22 @@ function App() {
       controller.abort();
     };
   }, [district]);
-  const current = weatherData?.current;
+  useEffect(() => {
+    const sectionIds = ["overview", "forecast", "districts", "insights", "analytics"];
+    const updateActiveSection = () => {
+      let currentSection = "overview";
+      for (const id of sectionIds) {
+        const section = document.getElementById(id);
+        if (section && section.getBoundingClientRect().top <= 160) {
+          currentSection = id;
+        }
+      }
+      setActiveSection(currentSection);
+    };
+    window.addEventListener("scroll", updateActiveSection, { passive: true });
+    updateActiveSection();
+    return () => window.removeEventListener("scroll", updateActiveSection);
+  }, []);  const current = weatherData?.current;
   const daily = weatherData?.daily;
   const weatherInfo = current
     ? getWeatherInfo(current.weather_code)
@@ -205,19 +259,21 @@ function App() {
         </a>
         <p className="nav-heading">WORKSPACE</p>
         <nav className="navigation">
-          <a className="nav-link active" href="#overview">
+          <a className={navClass("overview")} href="#overview" onClick={() => setActiveSection("overview")}>
             <span>Overview</span>
           </a>
-          <a className="nav-link" href="#forecast">
+          <a className={navClass("forecast")} href="#forecast" onClick={() => setActiveSection("forecast")}>
             <span>Forecast</span>
           </a>
-          <a className="nav-link" href="#districts">
+          <a className={navClass("districts")} href="#districts" onClick={() => setActiveSection("districts")}>
             <span>District Explorer</span>
           </a>
-          <a className="nav-link" href="#insights">
+          <a className={navClass("insights")} href="#insights" onClick={() => setActiveSection("insights")}>
             <span>Weather Insights</span>
           </a>
-        </nav>
+          <a className={navClass("analytics")} href="#analytics" onClick={() => setActiveSection("analytics")}>
+            <span>Historical Analytics</span>
+          </a>        </nav>
         <div className="sidebar-status">
           <span className="status-dot" />
           <div>
@@ -302,6 +358,50 @@ function App() {
             </div>
           </div>
         </section>
+        <section className="prediction-panel">
+          <div className="prediction-header">
+            <div>
+              <p className="eyebrow">AI / MACHINE LEARNING</p>
+              <h2>Rainfall Prediction</h2>
+              <p>Experimental rainfall estimate for {district}</p>
+            </div>
+            <span className="prediction-icon">🌧️</span>
+          </div>
+          {predictionLoading ? (
+            <p className="prediction-status">Loading ML prediction...</p>
+          ) : predictionError ? (
+            <p className="prediction-status" role="alert">
+              Prediction unavailable: {predictionError}
+            </p>
+          ) : prediction ? (
+            <>
+              <div className="prediction-metrics">
+                <div className="metric-card">
+                  <span>Rain Probability</span>
+                  <h3>{Number(prediction.rain_probability).toFixed(2)}%</h3>
+                  <p>Model-estimated probability of rain</p>
+                </div>
+                <div className="metric-card">
+                  <span>Expected Rainfall</span>
+                  <h3>{Number(prediction.conditional_rainfall_mm).toFixed(2)} mm</h3>
+                  <p>Estimated amount if rain occurs</p>
+                </div>
+                <div className="metric-card">
+                  <span>Rain Status</span>
+                  <h3>{prediction.rain_expected ? "Rain Expected" : "No Rain Expected"}</h3>
+                  <p>Prediction for {prediction.prediction_for}</p>
+                </div>
+              </div>
+              <p className="prediction-disclaimer">
+                Experimental ML estimate. Trained using Open-Meteo historical
+                data and supplied with Visual Crossing input data. Provider
+                differences may affect results. This is not an official IMD forecast.
+              </p>
+            </>
+          ) : (
+            <p className="prediction-status">No prediction data available.</p>
+          )}
+        </section>
         <section className="weather-hero">
           <div className="hero-copy">
               <p className="eyebrow">CURRENT CONDITIONS | {loading ? "LOADING" : "LIVE DATA"}</p>
@@ -368,9 +468,11 @@ function App() {
             detail="Weather code classification"
           />
         </section>
+        <ModelPerformance />
         <WeatherAlerts />
         <WeatherComparison />
         <WeatherMaps />
+        <HistoricalAnalytics district={district} />
 <section className="section-block" id="forecast">
           <div className="section-heading">
             <div>
@@ -456,6 +558,13 @@ function Metric({ icon, label, value, detail }) {
   );
 }
 export default App;
+
+
+
+
+
+
+
 
 
 

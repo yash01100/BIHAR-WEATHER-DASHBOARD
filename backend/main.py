@@ -204,3 +204,189 @@ async def get_weather(district: str):
     }
     weather_failures.pop(district_name, None)
     return result
+from datetime import date
+@app.get("/api/history/{district}")
+async def get_historical_weather(
+    district: str,
+    start_date: date,
+    end_date: date,
+):
+    district_name = next(
+        (name for name in DISTRICTS if name.casefold() == district.casefold()),
+        None,
+    )
+    if district_name is None:
+        raise HTTPException(
+            status_code=404,
+            detail="District not found. Check /api/districts.",
+        )
+    if start_date > end_date:
+        raise HTTPException(
+            status_code=400,
+            detail="start_date must be before or equal to end_date.",
+        )
+    date_range = (end_date - start_date).days + 1
+    if date_range > 31:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum historical date range is 31 days.",
+        )
+    api_key = os.getenv("VISUAL_CROSSING_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Weather API key is not configured on the server.",
+        )
+    coordinates = DISTRICTS[district_name]
+    location = f'{coordinates["latitude"]},{coordinates["longitude"]}'
+    url = (
+        "https://weather.visualcrossing.com/"
+        f"VisualCrossingWebServices/rest/services/timeline/"
+        f"{location}/{start_date.isoformat()}/{end_date.isoformat()}"
+    )
+    params = {
+        "key": api_key,
+        "unitGroup": "metric",
+        "include": "days",
+        "elements": "datetime,tempmax,tempmin,temp,precip,humidity",
+        "contentType": "json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            weather_data = response.json()
+    except httpx.HTTPStatusError as exc:
+        print(
+            f"Historical weather request failed: HTTP {exc.response.status_code}",
+            flush=True,
+        )
+        if exc.response.status_code == 429:
+            raise HTTPException(
+                status_code=503,
+                detail="Weather provider rate limit reached. Please try again later.",
+                headers={"Retry-After": "300"},
+            ) from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Historical weather provider request failed. Check API access and quota.",
+        ) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        print(
+            f"Historical weather request failed: {type(exc).__name__}",
+            flush=True,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Historical weather provider is temporarily unavailable.",
+        ) from exc
+    days = weather_data.get("days") or []
+    if not days:
+        raise HTTPException(
+            status_code=502,
+            detail="Historical weather provider returned no daily records.",
+        )
+    return {
+        "district": district_name,
+        "source": "Visual Crossing",
+        "data_mode": "historical_data",
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "record_count": len(days),
+        "daily": {
+            "time": [day.get("datetime") for day in days],
+            "temperature_max": [day.get("tempmax") for day in days],
+            "temperature_min": [day.get("tempmin") for day in days],
+            "temperature_avg": [day.get("temp") for day in days],
+            "rainfall": [day.get("precip") for day in days],
+            "humidity": [day.get("humidity") for day in days],
+        },
+    }
+from pathlib import Path as FilePath
+import json
+MODEL_METRICS_PATH = (
+    FilePath(__file__).parent / "ml" / "models" / "model_metrics.json"
+)
+@app.get("/api/model/metrics")
+async def get_model_metrics():
+    try:
+        with open(MODEL_METRICS_PATH, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="Model metrics file not found."
+        )
+    except (json.JSONDecodeError, OSError):
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to read model metrics."
+        )
+from ml.predict import load_models, predict_rainfall
+@app.get("/api/prediction/rainfall/{district}")
+async def predict_next_day_rainfall(district: str):
+    district_name = next(
+        (name for name in DISTRICTS if name.casefold() == district.casefold()),
+        None,
+    )
+    if district_name is None:
+        raise HTTPException(status_code=404, detail="District not found.")
+    # Use the most recently completed day, not instantaneous current conditions.
+    from datetime import date, timedelta
+    prediction_date = date.today() - timedelta(days=1)
+    try:
+        historical = await get_historical_weather(
+            district=district_name,
+            start_date=prediction_date,
+            end_date=prediction_date,
+        )
+    except HTTPException:
+        raise
+    daily = historical.get("daily", {})
+    required = {
+        "temperature_max": daily.get("temperature_max", []),
+        "temperature_min": daily.get("temperature_min", []),
+        "humidity": daily.get("humidity", []),
+        "rainfall": daily.get("rainfall", []),
+    }
+    if any(not values or values[0] is None for values in required.values()):
+        raise HTTPException(
+            status_code=502,
+            detail="Latest completed daily weather record is incomplete.",
+        )
+    try:
+        from ml.predict import classifier
+        if classifier is None:
+            load_models()
+        prediction = predict_rainfall(
+            district=district_name,
+            temperature_max=required["temperature_max"][0],
+            temperature_min=required["temperature_min"][0],
+            humidity=required["humidity"][0],
+            rainfall=required["rainfall"][0],
+        )
+    except Exception as exc:
+        print(f"ML prediction failed: {type(exc).__name__}", flush=True)
+        raise HTTPException(
+            status_code=503,
+            detail="Rainfall prediction model is temporarily unavailable.",
+        ) from exc
+    return {
+        "district": district_name,
+        "prediction_for": (prediction_date + timedelta(days=1)).isoformat(),
+        "input_date": prediction_date.isoformat(),
+        "input_source": "Visual Crossing historical daily data",
+        "training_source": "Open-Meteo Historical Archive",
+        "data_mode": "experimental_ml_estimate",
+        **prediction,
+        "model_metrics": {
+            "classifier_accuracy": 0.8837,
+            "classifier_f1": 0.8714,
+            "regressor_mae_mm": 6.7342,
+        },
+        "disclaimer": (
+            "Experimental ML estimate based on historical archive training data. "
+            "Input data comes from Visual Crossing, so provider differences may affect "
+            "results. This is not an official IMD forecast."
+        ),
+    }
