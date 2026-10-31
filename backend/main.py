@@ -13,7 +13,7 @@ app = FastAPI(
 )
 
 # In-memory weather cache
-CACHE_TTL_SECONDS = 300
+CACHE_TTL_SECONDS = 21600
 weather_cache = {}
 weather_failures = {}
 provider_retry_after = 0.0
@@ -108,6 +108,7 @@ def get_district_coordinates(district: str):
     }
 @app.get("/api/weather/{district}")
 async def get_weather(district: str):
+    global provider_retry_after
     district_name = next(
         (name for name in DISTRICTS if name.casefold() == district.casefold()),
         None,
@@ -121,6 +122,13 @@ async def get_weather(district: str):
     cached = weather_cache.get(district_name)
     if cached and now - cached["timestamp"] < CACHE_TTL_SECONDS:
         return cached["data"]
+    if now < provider_retry_after:
+        if cached:
+            return cached["data"]
+        raise HTTPException(
+            status_code=503,
+            detail="Weather provider quota cooldown is active. Please try later.",
+        )
     coordinates = DISTRICTS[district_name]
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
@@ -157,6 +165,14 @@ async def get_weather(district: str):
                 f"{type(exc).__name__}: {str(exc)}",
                 flush=True,
             )
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429:
+            provider_retry_after = time.monotonic() + 86400
+            if cached:
+                return cached["data"]
+            raise HTTPException(
+                status_code=503,
+                detail="Open-Meteo daily quota exceeded. Retry after cooldown.",
+            ) from exc
         if cached:
             return cached["data"]
         raise HTTPException(
