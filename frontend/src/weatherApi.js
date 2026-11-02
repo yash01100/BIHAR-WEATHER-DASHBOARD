@@ -5,6 +5,7 @@
 const weatherCache = new Map();
 const pendingRequests = new Map();
 const CACHE_DURATION = 60 * 1000;
+let pendingBulkRequest = null;
 export async function fetchWeather(district) {
   const name = String(district || "").trim();
   if (!name) {
@@ -41,6 +42,33 @@ export async function fetchWeather(district) {
     return await request;
   } finally {
     pendingRequests.delete(key);
+  }
+}
+export async function fetchBulkWeather() {
+  if (pendingBulkRequest) {
+    return pendingBulkRequest;
+  }
+  pendingBulkRequest = (async () => {
+    const response = await fetch(`${API_BASE}/api/weather/bulk`);
+    if (!response.ok) {
+      throw new Error(`Bulk weather API error: ${response.status}`);
+    }
+    const payload = await response.json();
+    const districts = payload.districts || {};
+    for (const [name, data] of Object.entries(districts)) {
+      if (data?.current && data?.daily) {
+        weatherCache.set(name.toLowerCase(), {
+          data,
+          expiresAt: Date.now() + CACHE_DURATION,
+        });
+      }
+    }
+    return payload;
+  })();
+  try {
+    return await pendingBulkRequest;
+  } finally {
+    pendingBulkRequest = null;
   }
 }
 export function clearWeatherCache() {

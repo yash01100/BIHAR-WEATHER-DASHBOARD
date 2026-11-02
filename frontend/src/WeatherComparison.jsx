@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from "react";
-import { fetchWeather } from "./weatherApi";
+import { fetchBulkWeather } from "./weatherApi";
 import {
   ResponsiveContainer,
   BarChart,
@@ -50,16 +50,18 @@ export default function WeatherComparison() {
     setLoading(true);
     setError("");
     try {
-      const results = await Promise.all(
-        names.map(async (name) => {
-          const data = await fetchWeather(name);
-          if (!data.current) throw new Error(`${name} ka data incomplete hai.`);
-          return {
-            district: name,
-            temperature: Number(data.current.temperature_2m),
-          };
-        })
-      );
+      const bulkPayload = await fetchBulkWeather();
+      const weatherByDistrict = bulkPayload.districts || {};
+      const results = names.map((name) => {
+        const data = weatherByDistrict[name];
+        if (!data?.current) {
+          throw new Error(`${name} ka data unavailable hai.`);
+        }
+        return {
+          district: name,
+          temperature: Number(data.current.temperature_2m),
+        };
+      });
       setChartData(results);
       setUpdatedAt(new Date());
     } catch (err) {

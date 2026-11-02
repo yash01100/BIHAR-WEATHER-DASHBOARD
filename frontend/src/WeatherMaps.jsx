@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useState } from "react";
-import { fetchWeather } from "./weatherApi";
+import { fetchBulkWeather } from "./weatherApi";
 import {
   CircleMarker,
   MapContainer,
@@ -452,41 +452,27 @@ export default function WeatherMaps() {
         if (!Array.isArray(names) || names.length === 0) {
           throw new Error("The backend did not return a district list.");
         }
-        const results = [];
-        let cursor = 0;
-        async function worker() {
-          while (cursor < names.length) {
-            const index = cursor++;
-            const item = names[index];
+        const bulkPayload = await fetchBulkWeather();
+        const weatherByDistrict = bulkPayload.districts || {};
+        const results = names
+          .map((item) => {
             const name =
               typeof item === "string"
                 ? item
                 : item?.name ?? item?.district ?? item?.district_name;
-            if (!name) continue;
-            try {
-              const data = await fetchWeather(name);
-              if (controller.signal.aborted) return;
-              const coords = readCoordinates(data);
-              if (coords) {
-                results.push({
-                  name,
-                  coords,
-                  temp: readTemperature(data),
-                  code: readWeatherCode(data),
-                });
-              }
-            } catch (err) {
-              if (err.name === "AbortError") throw err;
-              // One unavailable district should not block other markers.
-            }
-          }
-        }
-        await Promise.all(
-          Array.from(
-            { length: Math.min(6, names.length) },
-            () => worker()
-          )
-        );
+            if (!name) return null;
+            const data = weatherByDistrict[name];
+            if (!data?.current || !data?.daily) return null;
+            const coords = readCoordinates(data);
+            if (!coords) return null;
+            return {
+              name,
+              coords,
+              temp: readTemperature(data),
+              code: readWeatherCode(data),
+            };
+          })
+          .filter(Boolean);
         if (!controller.signal.aborted) {
           setDistricts(results);
           if (results.length === 0) {

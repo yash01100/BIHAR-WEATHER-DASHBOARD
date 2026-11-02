@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useState } from "react";
-import { fetchWeather } from "./weatherApi";
+import { fetchBulkWeather } from "./weatherApi";
 
 const API_BASE = (
   import.meta.env.VITE_API_BASE_URL ||
@@ -146,42 +146,21 @@ export default function WeatherAlerts() {
 
       setDistricts(names);
 
-      const results = new Array(names.length);
-      let nextIndex = 0;
-
-      // Maximum 6 simultaneous district requests
-      const workerCount = Math.min(6, names.length);
-
-      await Promise.all(
-        Array.from({ length: workerCount }, async () => {
-          while (true) {
-            const index = nextIndex++;
-
-            if (index >= names.length) return;
-
-            const name = names[index];
-
-            try {
-              const data = await fetchWeather(name);
-
-              if (!data.current || !data.daily) {
-                throw new Error(`${name} ka forecast incomplete hai.`);
-              }
-
-              results[index] = {
-                status: "fulfilled",
-                value: getAlerts(data),
-              };
-            } catch (requestError) {
-              results[index] = {
-                status: "rejected",
-                reason: requestError,
-              };
-            }
-          }
-        })
-      );
-
+      const bulkPayload = await fetchBulkWeather();
+      const weatherByDistrict = bulkPayload.districts || {};
+      const results = names.map((name) => {
+        const data = weatherByDistrict[name];
+        if (data?.current && data?.daily) {
+          return {
+            status: "fulfilled",
+            value: getAlerts(data),
+          };
+        }
+        return {
+          status: "rejected",
+          reason: new Error(`${name} ka forecast available nahi hai.`),
+        };
+      });
       const successfulAlerts = results
         .filter((result) => result?.status === "fulfilled")
         .flatMap((result) => result.value);

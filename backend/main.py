@@ -106,6 +106,144 @@ def get_district_coordinates(district: str):
         "district": district_name,
         "coordinates": DISTRICTS[district_name],
     }
+
+@app.get("/api/weather/bulk")
+async def get_bulk_weather():
+    """Fetch weather for all Bihar districts in one Open-Meteo request."""
+    global provider_retry_after
+    now = time.monotonic()
+    district_names = list(DISTRICTS.keys())
+    results = {}
+    missing = []
+    for name in district_names:
+        cached = weather_cache.get(name)
+        if cached and now - cached["timestamp"] < CACHE_TTL_SECONDS:
+            results[name] = cached["data"]
+        else:
+            missing.append(name)
+    if not missing:
+        return {"districts": results, "data_mode": "cached"}
+    if now < provider_retry_after:
+        if results:
+            return {"districts": results, "data_mode": "partial_cached",
+                    "unavailable": missing}
+        raise HTTPException(
+            status_code=503,
+            detail="Weather provider quota cooldown is active."
+        )
+    latitudes = ",".join(
+        str(DISTRICTS[name]["latitude"]) for name in missing
+    )
+    longitudes = ",".join(
+        str(DISTRICTS[name]["longitude"]) for name in missing
+    )
+    params = {
+        "latitude": latitudes,
+        "longitude": longitudes,
+        "current": (
+            "temperature_2m,relative_humidity_2m,"
+            "apparent_temperature,is_day,precipitation,"
+            "weather_code,wind_speed_10m"
+        ),
+        "daily": (
+            "weather_code,temperature_2m_max,"
+            "temperature_2m_min,precipitation_probability_max"
+        ),
+        "timezone": "Asia/Kolkata",
+        "forecast_days": 7,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params=params,
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        if isinstance(exc, httpx.HTTPStatusError):
+            print(
+                f"Open-Meteo bulk error: {exc.response.status_code} | "
+                f"{exc.response.text[:1000]}",
+                flush=True,
+            )
+            if exc.response.status_code == 429:
+                provider_retry_after = time.monotonic() + 86400
+        if results:
+            return {
+                "districts": results,
+                "data_mode": "partial_cached",
+                "unavailable": missing,
+            }
+        raise HTTPException(
+            status_code=503 if (
+                isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code == 429
+            ) else 502,
+            detail="Bulk weather provider is temporarily unavailable.",
+        ) from exc
+    if isinstance(payload, dict):
+        payload = [payload]
+    if not isinstance(payload, list) or len(payload) != len(missing):
+        raise HTTPException(
+            status_code=502,
+            detail="Bulk weather provider returned an unexpected response.",
+        )
+    descriptions = {
+        0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy",
+        3: "Overcast", 45: "Fog", 48: "Depositing rime fog",
+        51: "Light drizzle", 53: "Moderate drizzle", 55: "Dense drizzle",
+        61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain",
+        71: "Slight snow", 73: "Moderate snow", 75: "Heavy snow",
+        80: "Rain showers", 81: "Moderate rain showers",
+        82: "Violent rain showers", 95: "Thunderstorm",
+        96: "Thunderstorm with hail", 99: "Thunderstorm with heavy hail",
+    }
+    for name, weather_data in zip(missing, payload):
+        current_raw = weather_data.get("current") or {}
+        daily_raw = weather_data.get("daily") or {}
+        if not current_raw or not daily_raw:
+            continue
+        code = current_raw.get("weather_code")
+        result = {
+            "district": name,
+            "coordinates": DISTRICTS[name],
+            "source": "Open-Meteo",
+            "data_mode": "live_api",
+            "current": {
+                "temperature_2m": current_raw.get("temperature_2m"),
+                "relative_humidity_2m": current_raw.get("relative_humidity_2m"),
+                "apparent_temperature": current_raw.get("apparent_temperature"),
+                "is_day": current_raw.get("is_day"),
+                "precipitation": current_raw.get("precipitation", 0),
+                "weather_code": code,
+                "wind_speed_10m": current_raw.get("wind_speed_10m"),
+                "conditions": descriptions.get(code, "Unknown"),
+                "datetime": current_raw.get("time"),
+            },
+            "daily": {
+                "time": daily_raw.get("time", []),
+                "weather_code": daily_raw.get("weather_code", []),
+                "temperature_2m_max": daily_raw.get("temperature_2m_max", []),
+                "temperature_2m_min": daily_raw.get("temperature_2m_min", []),
+                "precipitation_probability_max": daily_raw.get(
+                    "precipitation_probability_max", []
+                ),
+            },
+        }
+        weather_cache[name] = {
+            "timestamp": time.monotonic(),
+            "data": result,
+        }
+        results[name] = result
+    unavailable = [
+        name for name in district_names if name not in results
+    ]
+    return {
+        "districts": results,
+        "data_mode": "live_api" if not unavailable else "partial",
+        "unavailable": unavailable,
+    }
 @app.get("/api/weather/{district}")
 async def get_weather(district: str):
     global provider_retry_after
