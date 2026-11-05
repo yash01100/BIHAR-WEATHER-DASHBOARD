@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchBulkWeather } from "./weatherApi";
 import {
   CircleMarker,
@@ -45,14 +45,15 @@ function readCoordinates(data) {
   return null;
 }
 function weatherEmoji(code) {
-  if (code == null) return "???";
-  if (code === 0) return "??";
-  if ([1, 2].includes(code)) return "???";
-  if (code === 3) return "??";
-  if ([45, 48].includes(code)) return "???";
-  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return "???";
-  if ([95, 96, 99].includes(code)) return "??";
-  return "???";
+  if (code == null || !Number.isFinite(Number(code))) return "\uD83C\uDF21\uFE0F";
+  const value = Number(code);
+  if (value === 0) return "\u2600\uFE0F";
+  if ([1, 2].includes(value)) return "\u26C5";
+  if (value === 3) return "\u2601\uFE0F";
+  if ([45, 48].includes(value)) return "\uD83C\uDF2B\uFE0F";
+  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(value)) return "\uD83C\uDF27\uFE0F";
+  if ([95, 96, 99].includes(value)) return "\u26C8\uFE0F";
+  return "\uD83C\uDF21\uFE0F";
 }
 function readWeatherCode(data) {
   const value =
@@ -493,7 +494,7 @@ export default function WeatherMaps() {
     return () => controller.abort();
   }, [refreshKey]);
   return (
-    <section className="section-block weather-maps-section" id="weather-maps">
+    <section className="section-block weather-maps-section" >
       <div className="section-heading">
         <div>
           <span className="eyebrow">LIVE GEOSPATIAL VIEW</span>

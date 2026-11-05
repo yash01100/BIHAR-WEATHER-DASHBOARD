@@ -1,5 +1,5 @@
-﻿import { useEffect, useState } from "react";
-import { jsPDF } from "jspdf";
+import { useEffect, useState } from "react";
+
 import {
   ResponsiveContainer,
   LineChart,
@@ -134,8 +134,9 @@ function HistoricalAnalytics({ district }) {
     link.remove();
     URL.revokeObjectURL(url);
   }
-  function exportPDF() {
+  async function exportPDF() {
     if (!history?.chartData?.length) return;
+    const { jsPDF } = await import("jspdf");
     const doc = new jsPDF({
       orientation: "landscape",
       unit: "mm",
@@ -221,7 +222,7 @@ function HistoricalAnalytics({ district }) {
   return (
     <section
       className="section-block"
-      id="analytics"
+
       style={{ marginTop: 32 }}
     >
       <div className="section-heading">
@@ -437,6 +438,3 @@ function HistoricalAnalytics({ district }) {
   );
 }
 export default HistoricalAnalytics;
-
-
-

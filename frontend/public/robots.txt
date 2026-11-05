@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://bihar-weather-dashboard.vercel.app/sitemap.xml

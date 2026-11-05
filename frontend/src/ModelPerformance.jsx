@@ -64,7 +64,7 @@ export default function ModelPerformance() {
     );
   }
   return (
-    <section className="prediction-panel model-performance-panel" id="model-performance">
+    <section className="prediction-panel model-performance-panel" >
       <div className="prediction-header">
         <div>
           <p className="eyebrow">MODEL EVALUATION / HISTORICAL TEST</p>

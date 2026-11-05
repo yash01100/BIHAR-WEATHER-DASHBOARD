@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchBulkWeather } from "./weatherApi";
 import {
   ResponsiveContainer,
@@ -9,7 +9,10 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "https://bihar-weather-api.onrender.com").replace(/\/$/, "");
+const API_BASE = (
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://bihar-weather-api.onrender.com"
+).replace(/\/$/, "");
 export default function WeatherComparison() {
   const [districts, setDistricts] = useState([]);
   const [selected, setSelected] = useState(["Patna", "Gaya", "Bhagalpur"]);
@@ -22,7 +25,9 @@ export default function WeatherComparison() {
     async function loadDistricts() {
       try {
         const response = await fetch(`${API_BASE}/api/districts`);
-        if (!response.ok) throw new Error("District list load nahi hui.");
+        if (!response.ok) {
+          throw new Error("District list load nahi hui.");
+        }
         const data = await response.json();
         if (!cancelled) {
           const names = data.districts || [];
@@ -52,29 +57,47 @@ export default function WeatherComparison() {
     try {
       const bulkPayload = await fetchBulkWeather();
       const weatherByDistrict = bulkPayload.districts || {};
-      const results = names.map((name) => {
-        const data = weatherByDistrict[name];
-        if (!data?.current) {
-          throw new Error(`${name} ka data unavailable hai.`);
-        }
-        return {
-          district: name,
-          temperature: Number(data.current.temperature_2m),
-        };
-      });
+      const results = names
+        .map((name) => {
+          const data = weatherByDistrict[name];
+          const rawTemperature = data?.current?.temperature_2m;
+          const temperature = Number(rawTemperature);
+          if (
+            rawTemperature === null ||
+            rawTemperature === undefined ||
+            rawTemperature === "" ||
+            !Number.isFinite(temperature)
+          ) {
+            return null;
+          }
+          return {
+            district: name,
+            temperature,
+          };
+        })
+        .filter(Boolean);
+      if (!results.length) {
+        throw new Error("Selected districts ka valid temperature data nahi mila.");
+      }
       setChartData(results);
       setUpdatedAt(new Date());
     } catch (err) {
       setError(err.message || "Comparison data load nahi hua.");
+      setChartData([]);
     } finally {
       setLoading(false);
     }
   }
   useEffect(() => {
     if (!districts.length) return;
-    const validSelected = selected.filter((name) => districts.includes(name));
+    const validSelected = selected.filter((name) =>
+      districts.includes(name)
+    );
     if (!validSelected.length) return;
-    const timer = window.setTimeout(() => loadComparison(validSelected), 0);
+    const timer = window.setTimeout(
+      () => loadComparison(validSelected),
+      0
+    );
     return () => window.clearTimeout(timer);
   }, [selected, districts]);
   function toggleDistrict(name) {
@@ -90,7 +113,7 @@ export default function WeatherComparison() {
     });
   }
   return (
-    <section className="section-block" id="comparison" style={{ marginTop: 28 }}>
+    <section className="section-block"  style={{ marginTop: 28 }}>
       <div className="section-heading">
         <div>
           <p className="eyebrow">DISTRICT ANALYTICS</p>
@@ -144,9 +167,9 @@ export default function WeatherComparison() {
         <span className="footnote">
           {selected.length} district(s) selected
           {updatedAt
-            ? ` · Updated ${updatedAt.toLocaleTimeString("en-IN", {
+            ? ` ï¿½ Updated ${updatedAt.toLocaleTimeString("en-IN", {
                 hour: "2-digit",
-                    hourCycle: "h23",
+                hourCycle: "h23",
                 minute: "2-digit",
               })}`
             : ""}
@@ -169,8 +192,10 @@ export default function WeatherComparison() {
                 interval={0}
                 height={65}
               />
-              <YAxis unit="°C" domain={["auto", "auto"]} />
-              <Tooltip formatter={(value) => [`${value}°C`, "Temperature"]} />
+              <YAxis unit="ï¿½C" domain={[0, "auto"]} />
+              <Tooltip
+                formatter={(value) => [`${value}ï¿½C`, "Temperature"]}
+              />
               <Bar
                 dataKey="temperature"
                 name="Temperature"
@@ -182,7 +207,7 @@ export default function WeatherComparison() {
         </div>
       )}
       <p className="footnote">
-        Source: Open-Meteo API. Values provider ke latest available weather data par based hain.
+        Source: Visual Crossing API. Values provider ke latest available weather data par based hain.
       </p>
     </section>
   );

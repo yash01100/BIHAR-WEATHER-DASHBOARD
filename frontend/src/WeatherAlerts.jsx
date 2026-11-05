@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchBulkWeather } from "./weatherApi";
 
 const API_BASE = (
@@ -209,7 +209,7 @@ export default function WeatherAlerts() {
   return (
     <section
       className="section-block"
-      id="weather-alerts"
+
       style={{ marginTop: 28 }}
     >
       <div className="section-heading">
@@ -361,7 +361,7 @@ export default function WeatherAlerts() {
       </div>
 
       <p className="footnote" style={{ marginTop: 16 }}>
-        Source: Open-Meteo weather API through the project backend.
+        Source: Visual Crossing API through the project backend.
         Thresholds are project rules, not official public safety guidance.
       </p>
     </section>

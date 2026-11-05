@@ -1,11 +1,12 @@
-﻿import { useEffect, useState } from "react";
+import { lazy, useEffect, useState } from "react";
+import LazySection from "./LazySection";
 import { fetchWeather as fetchDistrictWeather } from "./weatherApi";
 import "./App.css";
-import WeatherComparison from "./WeatherComparison";
-import WeatherAlerts from "./WeatherAlerts";
-import WeatherMaps from "./WeatherMaps";
-import HistoricalAnalytics from "./HistoricalAnalytics";
-import ModelPerformance from "./ModelPerformance";
+const WeatherComparison = lazy(() => import("./WeatherComparison"));
+const WeatherAlerts = lazy(() => import("./WeatherAlerts"));
+const WeatherMaps = lazy(() => import("./WeatherMaps"));
+const HistoricalAnalytics = lazy(() => import("./HistoricalAnalytics"));
+const ModelPerformance = lazy(() => import("./ModelPerformance"));
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "https://bihar-weather-api.onrender.com").replace(/\/$/, "");
 
 function getWeatherInfo(code) {
@@ -140,7 +141,7 @@ function App() {
     };
   }, [district]);
   useEffect(() => {
-    const sectionIds = ["overview", "forecast", "districts", "insights", "analytics"];
+    const sectionIds = ["overview", "districts", "weather-alerts", "comparison", "weather-maps", "analytics", "forecast", "insights"];
     const updateActiveSection = () => {
       let currentSection = "overview";
       for (const id of sectionIds) {
@@ -160,7 +161,7 @@ function App() {
     ? getWeatherInfo(current.weather_code)
     : { condition: "Loading...", icon: "\u{1F324}\uFE0F" };
   const forecast = daily
-    ? daily.time.slice(0, 5).map((date, index) => ({
+    ? daily.time.slice(0, 7).map((date, index) => ({
         day: formatDay(date, index),
         date,
         ...getWeatherInfo(daily.weather_code[index]),
@@ -210,21 +211,31 @@ function App() {
         </a>
         <p className="nav-heading">WORKSPACE</p>
         <nav className="navigation">
-          <a className={navClass("overview")} href="#overview" onClick={() => setActiveSection("overview")}>
-            <span>Overview</span>
-          </a>
-          <a className={navClass("forecast")} href="#forecast" onClick={() => setActiveSection("forecast")}>
-            <span>Forecast</span>
-          </a>
-          <a className={navClass("districts")} href="#districts" onClick={() => setActiveSection("districts")}>
-            <span>District Explorer</span>
-          </a>
-          <a className={navClass("insights")} href="#insights" onClick={() => setActiveSection("insights")}>
-            <span>Weather Insights</span>
-          </a>
-          <a className={navClass("analytics")} href="#analytics" onClick={() => setActiveSection("analytics")}>
-            <span>Historical Analytics</span>
-          </a>        </nav>
+  <a className={navClass("overview")} href="#overview" onClick={() => setActiveSection("overview")}>
+    <span>Overview</span>
+  </a>
+  <a className={navClass("districts")} href="#districts" onClick={() => setActiveSection("districts")}>
+    <span>District Explorer</span>
+  </a>
+  <a className={navClass("weather-alerts")} href="#weather-alerts" onClick={() => setActiveSection("weather-alerts")}>
+    <span>Smart Weather Alerts & Risk Dashboard</span>
+  </a>
+  <a className={navClass("comparison")} href="#comparison" onClick={() => setActiveSection("comparison")}>
+    <span>Temperature Comparison</span>
+  </a>
+  <a className={navClass("weather-maps")} href="#weather-maps" onClick={() => setActiveSection("weather-maps")}>
+    <span>Bihar Weather Maps</span>
+  </a>
+  <a className={navClass("analytics")} href="#analytics" onClick={() => setActiveSection("analytics")}>
+    <span>Historical Analytics</span>
+  </a>
+  <a className={navClass("forecast")} href="#forecast" onClick={() => setActiveSection("forecast")}>
+    <span>Forecast</span>
+  </a>
+  <a className={navClass("insights")} href="#insights" onClick={() => setActiveSection("insights")}>
+    <span>Weather Insights</span>
+  </a>
+</nav>
         <div className="sidebar-status">
           <span className="status-dot" />
           <div>
@@ -418,16 +429,16 @@ function App() {
             detail="Weather code classification"
           />
         </section>
-        <ModelPerformance />
-        <WeatherAlerts />
-        <WeatherComparison />
-        <WeatherMaps />
-        <HistoricalAnalytics district={district} />
+        <LazySection component={ModelPerformance} sectionId="model-performance" fallback="Model performance will load when you scroll here..." />
+        <LazySection component={WeatherAlerts} sectionId="weather-alerts" fallback="Weather alerts will load when you scroll here..." />
+        <LazySection component={WeatherComparison} sectionId="comparison" fallback="Comparison will load when you scroll here..." />
+        <LazySection component={WeatherMaps} sectionId="weather-maps" fallback="Weather maps will load when you scroll here..." />
+        <LazySection component={HistoricalAnalytics} district={district} sectionId="analytics" fallback="Historical analytics will load when you scroll here..." />
 <section className="section-block" id="forecast">
           <div className="section-heading">
             <div>
               <p className="eyebrow">UPCOMING OUTLOOK</p>
-              <h2>5-Day Forecast</h2>
+              <h2>7-Day Forecast</h2>
             </div>
             <span className="section-badge">
               {loading ? "LOADING" : error ? "UNAVAILABLE" : "LIVE FORECAST"}
