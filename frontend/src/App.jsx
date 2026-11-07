@@ -21,6 +21,19 @@ function getWeatherInfo(code) {
   if ([95, 96, 99].includes(code)) return { condition: "Thunderstorm", icon: "\u26c8\ufe0f" };
   return { condition: "Conditions Unavailable", icon: "\u2753" };
 }
+function formatClockTime(value) {
+  if (!value) return "Time unavailable";
+  const raw = String(value);
+  const timePart = raw.includes("T") ? raw.split("T").pop() : raw.split(" ").pop();
+  const match = timePart.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return raw;
+  const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
 function formatDay(dateString, index) {
   if (index === 0) return "Today";
   if (index === 1) return "Tomorrow";
@@ -73,71 +86,28 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [prediction, setPrediction] = useState(null);
-  const [predictionLoading, setPredictionLoading] = useState(false);
-  const [predictionError, setPredictionError] = useState("");
   useEffect(() => {
-    const controller = new AbortController();
-    async function fetchPrediction() {
-      setPredictionLoading(true);
-      setPredictionError("");
-      setPrediction(null);
-      try {
-        const response = await fetch(
-          `${API_BASE}/api/prediction/rainfall/${encodeURIComponent(district)}`,
-          { signal: controller.signal }
-        );
-        if (!response.ok) {
-          throw new Error(`Prediction API error: ${response.status}`);
-        }
-        const data = await response.json();
-        if (!controller.signal.aborted) {
-          setPrediction(data);
-        }
-      } catch (err) {
-        if (err.name !== "AbortError" && !controller.signal.aborted) {
-          setPredictionError(err.message || "Prediction load nahi ho paayi.");
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setPredictionLoading(false);
-        }
-      }
-    }
-    fetchPrediction();
-    return () => controller.abort();
-  }, [district]);
-  useEffect(() => {
-    const controller = new AbortController();
-    async function fetchWeather() {
+    let active = true;
+    async function loadWeather() {
       setLoading(true);
       setError("");
-      setWeatherData(null);
       try {
         const data = await fetchDistrictWeather(district);
-        if (controller.signal.aborted) return;
-        setWeatherData(data);
-        setLastUpdated(new Date());
+        if (active) {
+          setWeatherData(data);
+          setLastUpdated(new Date());
+        }
       } catch (err) {
-        if (err.name !== "AbortError") {
-          setError(
-            err.message ||
-              "Weather data nahi mil raha. Backend aur internet connection check karo."
-          );
-        }
+        if (active) setError(err.message || "Weather data load nahi hua.");
       } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     }
-    fetchWeather();
-    const refreshTimer = window.setInterval(() => {
-      fetchWeather();
-    }, 5 * 60 * 1000);
+    loadWeather();
+    const interval = setInterval(loadWeather, 5 * 60 * 1000);
     return () => {
-      window.clearInterval(refreshTimer);
-      controller.abort();
+      active = false;
+      clearInterval(interval);
     };
   }, [district]);
   useEffect(() => {
@@ -155,7 +125,8 @@ function App() {
     window.addEventListener("scroll", updateActiveSection, { passive: true });
     updateActiveSection();
     return () => window.removeEventListener("scroll", updateActiveSection);
-  }, []);  const current = weatherData?.current;
+  }, []);
+  const current = weatherData?.current;
   const daily = weatherData?.daily;
   const weatherInfo = current
     ? getWeatherInfo(current.weather_code)
@@ -194,14 +165,14 @@ function App() {
       insightText = `Wind speed ${wind} km/h report hui hai. Local advisories aur updated weather conditions par nazar rakhein.`;
     } else {
       insightTitle = "Current conditions";
-      insightText = `${district} mein ${weatherInfo.condition.toLowerCase()} conditions hain. Temperature ${current.temperature_2m}°C aur humidity ${humidity}% report hui hai.`;
+      insightText = `${district} mein ${weatherInfo.condition.toLowerCase()} conditions hain. Temperature ${current.temperature_2m}\u00B0C aur humidity ${humidity}% report hui hai.`;
     }
   }
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <a className="brand" href="#overview">
-          <span className="brand-icon">☀️</span>
+          <span className="brand-icon">{String.fromCodePoint(0x2600, 0xFE0F)}</span>
           <span>
             <strong>
               BIHAR<span className="brand-accent">WX</span>
@@ -266,7 +237,7 @@ function App() {
         </header>
         {error ? (
           <section className="demo-notice" role="alert">
-            <span className="notice-icon">🌤️</span>
+            <span className="notice-icon">{String.fromCodePoint(0x26C5)}</span>
             <div>
               <strong>Weather data unavailable</strong>
               <p>{error}</p>
@@ -278,7 +249,7 @@ function App() {
           </section>
         ) : (
           <section className="demo-notice">
-            <span className="notice-icon">🌤️</span>
+            <span className="notice-icon">{String.fromCodePoint(0x26C5)}</span>
             <div>
               <strong>
                 {loading
@@ -309,7 +280,7 @@ function App() {
             </select>
           </div>
           <div className="location-info">
-            <span className="location-icon">📍</span>
+            <span className="location-icon">{String.fromCodePoint(0x1F4CD)}</span>
             <div>
               <strong>{district}, Bihar</strong>
               <small>
@@ -320,49 +291,6 @@ function App() {
             </div>
           </div>
         </section>
-        <section className="prediction-panel">
-          <div className="prediction-header">
-            <div>
-              <p className="eyebrow">AI / MACHINE LEARNING</p>
-              <h2>Rainfall Prediction</h2>
-              <p>Experimental rainfall estimate for {district}</p>
-            </div>
-            <span className="prediction-icon">🌧️</span>
-          </div>
-          {predictionLoading ? (
-            <p className="prediction-status">Loading ML prediction...</p>
-          ) : predictionError ? (
-            <p className="prediction-status" role="alert">
-              Prediction unavailable: {predictionError}
-            </p>
-          ) : prediction ? (
-            <>
-              <div className="prediction-metrics">
-                <div className="metric-card">
-                  <span>Rain Probability</span>
-                  <h3>{Number(prediction.rain_probability).toFixed(2)}%</h3>
-                  <p>Model-estimated probability of rain</p>
-                </div>
-                <div className="metric-card">
-                  <span>Expected Rainfall</span>
-                  <h3>{Number(prediction.conditional_rainfall_mm).toFixed(2)} mm</h3>
-                  <p>Estimated amount if rain occurs</p>
-                </div>
-                <div className="metric-card">
-                  <span>Rain Status</span>
-                  <h3>{prediction.rain_expected ? "Rain Expected" : "No Rain Expected"}</h3>
-                  <p>Prediction for {prediction.prediction_for}</p>
-                </div>
-              </div>
-              <p className="prediction-disclaimer">
-                Experimental ML estimate. Trained and supplied with Open-Meteo
-                Historical Archive data. This is not an official IMD forecast.
-              </p>
-            </>
-          ) : (
-            <p className="prediction-status">No prediction data available.</p>
-          )}
-        </section>
         <section className="weather-hero">
           <div className="hero-copy">
               <p className="eyebrow">CURRENT CONDITIONS | {loading ? "LOADING" : "LIVE DATA"}</p>
@@ -372,11 +300,11 @@ function App() {
             </p>
             <div className="temperature">
               {current ? current.temperature_2m : "--"}
-              <span>°C</span>
+              <span>{"\u00B0C"}</span>
             </div>
             <p className="temperature-note">
               {current
-                ? `Feels like ${current.apparent_temperature}\u00B0C | ${(current.time || current.datetime || "Time unavailable").replace("T", " ")}`
+                ? `Feels like ${current.apparent_temperature}\u00B0C | ${formatClockTime(current.time || current.datetime)}`
                 : "Temperature will appear when data loads"}
             </p>
           </div>
@@ -395,7 +323,7 @@ function App() {
               {lastUpdated
                 ? lastUpdated.toLocaleTimeString("en-IN", {
                     hour: "2-digit",
-                    hourCycle: "h23",
+                    hour12: true,
                     minute: "2-digit",
                     second: "2-digit",
                   })
@@ -453,10 +381,10 @@ function App() {
 </small>
                 <span className="forecast-icon">{item.icon}</span>
                 <h3>
-                  {item.max !== null ? `${item.max}°C` : "--"}
+                  {item.max !== null ? `${item.max}\u00B0C` : "--"}
                 </h3>
                 <small>
-                  Low: {item.min !== null ? `${item.min}°C` : "--"}
+                  Low: {item.min !== null ? `${item.min}\u00B0C` : "--"}
                 </small>
                 <small>
                   Rain chance: {item.rain != null ? `${item.rain}%` : "N/A"}

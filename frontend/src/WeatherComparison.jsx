@@ -167,9 +167,9 @@ export default function WeatherComparison() {
         <span className="footnote">
           {selected.length} district(s) selected
           {updatedAt
-            ? ` ï¿½ Updated ${updatedAt.toLocaleTimeString("en-IN", {
+            ? ` Updated ${updatedAt.toLocaleTimeString("en-IN", {
                 hour: "2-digit",
-                hourCycle: "h23",
+                hour12: true,
                 minute: "2-digit",
               })}`
             : ""}
@@ -192,9 +192,9 @@ export default function WeatherComparison() {
                 interval={0}
                 height={65}
               />
-              <YAxis unit="ï¿½C" domain={[0, "auto"]} />
+              <YAxis unit={String.fromCharCode(176) + "C"} domain={[0, "auto"]} />
               <Tooltip
-                formatter={(value) => [`${value}ï¿½C`, "Temperature"]}
+                formatter={(value) => [`${value}\u00B0C`, "Temperature"]}
               />
               <Bar
                 dataKey="temperature"
