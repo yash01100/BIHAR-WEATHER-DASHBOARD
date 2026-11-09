@@ -152,7 +152,7 @@ def _visual_crossing_current(current):
         "relative_humidity_2m": current.get("humidity"),
         "apparent_temperature": current.get("feelslike"),
         "is_day": None,
-        "precipitation": current.get("precip", 0),
+        "precipitation": current.get("precip"),
         "weather_code": code,
         "wind_speed_10m": current.get("windspeed"),
         "conditions": current.get("conditions") or descriptions.get(code, "Unknown"),
@@ -416,4 +416,654 @@ async def predict_next_day_rainfall(district: str):
             "Input data comes from Visual Crossing; the model was trained on Open-Meteo data. "
             "This is not an official IMD forecast."
         ),
+    }
+# ============================================================
+# LOCAL AI WEATHER ASSISTANT
+# Uses local Ollama model and existing weather API data.
+# ============================================================
+from pydantic import BaseModel, Field
+class AIWeatherChatRequest(BaseModel):
+    district: str = Field(min_length=1, max_length=80)
+    message: str = Field(min_length=1, max_length=500)
+@app.post("/api/ai/chat")
+async def ai_weather_chat(request: AIWeatherChatRequest):
+    district_name = next(
+        (
+            name for name in DISTRICTS
+            if name.casefold() == request.district.strip().casefold()
+        ),
+        None,
+    )
+    if district_name is None:
+        raise HTTPException(
+            status_code=404,
+            detail="District not found. Check /api/districts.",
+        )
+    question = request.message.strip()
+    if not question:
+        raise HTTPException(
+            status_code=400,
+            detail="Please enter a question.",
+        )
+    # Deterministic comparison between two Bihar districts.
+    import re
+    comparison_match = re.search(
+        r"\b(compare|comparison|compare karo|compare kar|ke comparison mein|kis district|which district|kaun sa district|kaunsa district|kaun|kahan|zyada|jyada|kam|higher|lower|hotter|colder|cooler|warmer|thanda|thandi|thande|garam|garmi|thand|humidity|humid|nami|wind|hawa|pawan|breeze)\b",
+        question,
+        re.IGNORECASE,
+    )
+    if comparison_match:
+        district_matches = []
+        for name in DISTRICTS:
+            match = re.search(
+                r"(?<!\w)" + re.escape(name) + r"(?!\w)",
+                question,
+                re.IGNORECASE,
+            )
+            if match:
+                district_matches.append((match.start(), name))
+        mentioned_districts = [
+            name for _, name in sorted(district_matches)
+        ]
+        if len(mentioned_districts) >= 2:
+            first_district = mentioned_districts[0]
+            second_district = mentioned_districts[1]
+            first_data, second_data = await asyncio.gather(
+                get_weather(first_district),
+                get_weather(second_district),
+            )
+            first_current = first_data.get("current") or {}
+            second_current = second_data.get("current") or {}
+            forecast_requested = bool(re.search(
+                r"\b(tomorrow|kal|next day|agle din|forecast|next-day)\b",
+                question,
+                re.IGNORECASE,
+            ))
+            if forecast_requested:
+                first_daily = first_data.get("daily") or {}
+                second_daily = second_data.get("daily") or {}
+                first_dates = first_daily.get("time") or []
+                second_dates = second_daily.get("time") or []
+                today_text = datetime.now(
+                    ZoneInfo("Asia/Kolkata")
+                ).date().isoformat()
+                next_index = next(
+                    (
+                        i for i, date_text in enumerate(first_dates)
+                        if date_text > today_text
+                    ),
+                    None,
+                )
+                def comparison_daily_value(daily, key, index):
+                    values = daily.get(key)
+                    if isinstance(values, list) and index < len(values):
+                        return values[index]
+                    return None
+                if (
+                    next_index is not None
+                    and next_index < len(second_dates)
+                ):
+                    first_max = comparison_daily_value(
+                        first_daily, "temperature_2m_max", next_index
+                    )
+                    second_max = comparison_daily_value(
+                        second_daily, "temperature_2m_max", next_index
+                    )
+                    first_min = comparison_daily_value(
+                        first_daily, "temperature_2m_min", next_index
+                    )
+                    second_min = comparison_daily_value(
+                        second_daily, "temperature_2m_min", next_index
+                    )
+                    forecast_date = first_dates[next_index]
+                    answer_lines = [
+                        f"Next-day forecast comparison ({forecast_date}):"
+                    ]
+                    if all(
+                        isinstance(v, (int, float))
+                        for v in [first_max, second_max]
+                    ):
+                        answer_lines.extend([
+                            f"Maximum temperature:",
+                            f"{first_district}: {first_max:.1f}°C",
+                            f"{second_district}: {second_max:.1f}°C",
+                            f"Maximum temperature difference: {abs(first_max - second_max):.1f}°C",
+                        ])
+                        if first_max > second_max:
+                            answer_lines.append(
+                                f"{first_district} ka maximum temperature zyada rahega."
+                            )
+                        elif second_max > first_max:
+                            answer_lines.append(
+                                f"{second_district} ka maximum temperature zyada rahega."
+                            )
+                        else:
+                            answer_lines.append(
+                                "Dono districts ka maximum temperature barabar rahega."
+                            )
+                    else:
+                        answer_lines.append(
+                            "Maximum temperature forecast unavailable hai."
+                        )
+                    if all(
+                        isinstance(v, (int, float))
+                        for v in [first_min, second_min]
+                    ):
+                        answer_lines.extend([
+                            "Minimum temperature:",
+                            f"{first_district}: {first_min:.1f}°C",
+                            f"{second_district}: {second_min:.1f}°C",
+                            f"Minimum temperature difference: {abs(first_min - second_min):.1f}°C",
+                        ])
+                    else:
+                        answer_lines.append(
+                            "Minimum temperature forecast unavailable hai."
+                        )
+                    answer = "\n".join(answer_lines)
+                else:
+                    answer = (
+                        "Next-day forecast comparison unavailable hai. "
+                        "Dono districts ki forecast dates verify nahi ho paayi."
+                    )
+            else:
+                temperature_question = bool(re.search(
+                    r"temperature|temp|degree|degrees|hot|hotter|cold|colder|cool|cooler|warm|warmer|garmi|garam|thand|thanda|thandi|thande|taapman|tapman",
+                    question,
+                    re.IGNORECASE,
+                ))
+                humidity_question = bool(re.search(
+                    r"\b(humidity|humid|moisture|nami|chipchipa|chipchipahat)\b",
+                    question,
+                    re.IGNORECASE,
+                ))
+                wind_question = bool(re.search(
+                    r"wind|breeze|windy|hawa|pawan|vaayu|tez hawa",
+                    question,
+                    re.IGNORECASE,
+                ))
+                if humidity_question:
+                    field = "relative_humidity_2m"
+                    label = "humidity"
+                    unit = "%"
+                    difference_unit = "percentage points"
+                elif wind_question:
+                    field = "wind_speed_10m"
+                    label = "wind speed"
+                    unit = "km/h"
+                    difference_unit = "km/h"
+                else:
+                    field = "temperature_2m"
+                    label = "temperature"
+                    unit = "°C"
+                    difference_unit = "°C"
+                first_value = first_current.get(field)
+                second_value = second_current.get(field)
+                if (
+                    isinstance(first_value, (int, float))
+                    and isinstance(second_value, (int, float))
+                ):
+                    difference = abs(first_value - second_value)
+                    if first_value > second_value:
+                        if field == "temperature_2m":
+                            result_text = (
+                                f"{second_district}, {first_district} se "
+                                f"{difference:.1f}\u00b0C thanda hai."
+                            )
+                        elif field == "relative_humidity_2m":
+                            result_text = (
+                                f"{first_district} mein humidity "
+                                f"{second_district} se "
+                                f"{difference:.1f} percentage points zyada hai."
+                            )
+                        else:
+                            result_text = (
+                                f"{first_district} mein hawa ki speed "
+                                f"{second_district} se {difference:.1f} km/h zyada hai."
+                            )
+                    elif second_value > first_value:
+                        if field == "temperature_2m":
+                            result_text = (
+                                f"{first_district}, {second_district} se "
+                                f"{difference:.1f}\u00b0C thanda hai."
+                            )
+                        elif field == "relative_humidity_2m":
+                            result_text = (
+                                f"{second_district} mein humidity "
+                                f"{first_district} se "
+                                f"{difference:.1f} percentage points zyada hai."
+                            )
+                        else:
+                            result_text = (
+                                f"{second_district} mein hawa ki speed "
+                                f"{first_district} se {difference:.1f} km/h zyada hai."
+                            )
+                    else:
+                        result_text = (
+                            f"Dono districts mein {label} barabar hai."
+                        )
+                    answer = (
+                        f"{first_district}: {first_value:.1f}{unit}\n"
+                        f"{second_district}: {second_value:.1f}{unit}\n"
+                        f"Difference: {difference:.1f} {difference_unit}\n"
+                        f"{result_text}"
+                    )
+                else:
+                    answer = (
+                        f"{label.capitalize()} comparison unavailable hai. "
+                        "Ek ya dono districts ki reading API se available nahi hai."
+                    )
+            return {
+                "district": district_name,
+                "answer": answer,
+                "model": "Backend Comparison Logic",
+                "weather_source": first_data.get("source", "Unknown"),
+                "data_mode": first_data.get("data_mode", "Unknown"),
+                "forecast_days_available": 1 if forecast_requested else 0,
+            }    # Get actual weather from the existing weather API function.
+    weather_data = await get_weather(district_name)
+    current = weather_data.get("current") or {}
+    daily = weather_data.get("daily") or {}
+    dates = daily.get("time") or []
+    def daily_value(key, index):
+        values = daily.get(key)
+        if isinstance(values, list) and index < len(values):
+            return values[index]
+        return None
+    forecast = []
+    for index, forecast_date in enumerate(dates[1:8], start=1):
+        forecast.append({
+            "date": forecast_date,
+            "weather_code": daily_value("weather_code", index),
+            "maximum_temperature_c": daily_value(
+                "temperature_2m_max", index
+            ),
+            "minimum_temperature_c": daily_value(
+                "temperature_2m_min", index
+            ),
+            "precipitation_probability_percent": daily_value(
+                "precipitation_probability_max", index
+            ),
+        })
+
+    # Deterministic forecast trend analysis using verified provider data.
+    trend_requested = bool(re.search(
+        r"\b(trend|pattern|increase|increasing|decrease|decreasing|rise|rising|fall|falling|badhega|badhegi|badhta|ghatega|ghategi|kam hoga|sabse zyada|sabse kam|highest|lowest|maximum|minimum)\b|rain\s*(chance|probability)|baarish.*(chance|probability)|temperature.*(trend|change)",
+        question,
+        re.IGNORECASE,
+    ))
+    if trend_requested:
+        question_lower = question.lower()
+        rain_focus = bool(re.search(
+            r"\b(rain|rainfall|precipitation|baarish|barish)\b",
+            question_lower,
+        ))
+        temperature_focus = bool(re.search(
+            r"\b(temp|temperature|garmi|thand)\b",
+            question_lower,
+        ))
+        general_trend = bool(re.search(
+            r"\b(trend|pattern)\b",
+            question_lower,
+        ))
+        rain_only = rain_focus and not temperature_focus and not general_trend
+        temperature_only = temperature_focus and not rain_focus
+        def get_trend_points(key):
+            values = daily.get(key)
+            points = []
+            if isinstance(values, list):
+                for index in range(1, min(len(dates), 8)):
+                    value = values[index] if index < len(values) else None
+                    if (
+                        isinstance(value, (int, float))
+                        and not isinstance(value, bool)
+                    ):
+                        points.append((dates[index], float(value)))
+            return points
+        def describe_trend(points, label, unit):
+            if len(points) < 2:
+                return (
+                    f"{label}: trend calculate karne ke liye "
+                    "sufficient forecast readings available nahi hain."
+                )
+            first_date, first_value = points[0]
+            last_date, last_value = points[-1]
+            difference = last_value - first_value
+            if difference > 0.05:
+                direction = "badh raha hai"
+            elif difference < -0.05:
+                direction = "ghat raha hai"
+            else:
+                direction = "lagbhag stable hai"
+            return (
+                f"{label}: {first_value:.1f}{unit} ({first_date}) "
+                f"se {last_value:.1f}{unit} ({last_date}) tak "
+                f"{direction}. Difference: {abs(difference):.1f}{unit}."
+            )
+        max_points = get_trend_points("temperature_2m_max")
+        min_points = get_trend_points("temperature_2m_min")
+        rain_points = get_trend_points("precipitation_probability_max")
+        if rain_only:
+            answer_lines = [
+                f"{district_name} ka agle 7 din ka rain probability analysis "
+                f"({len(forecast)} available forecast days):"
+            ]
+        elif temperature_only:
+            answer_lines = [
+                f"{district_name} ka agle 7 din ka temperature analysis "
+                f"({len(forecast)} available forecast days):"
+            ]
+        else:
+            answer_lines = [
+                f"{district_name} ka forecast trend analysis "
+                f"({len(forecast)} available forecast days):"
+            ]
+        if not rain_only:
+            answer_lines.append(
+                describe_trend(max_points, "Maximum temperature", "\u00b0C")
+            )
+            answer_lines.append(
+                describe_trend(min_points, "Minimum temperature", "\u00b0C")
+            )
+            if max_points:
+                hottest_date, hottest_value = max(
+                    max_points, key=lambda point: point[1]
+                )
+                answer_lines.append(
+                    f"Highest forecast maximum temperature: "
+                    f"{hottest_value:.1f}\u00b0C on {hottest_date}."
+                )
+            else:
+                answer_lines.append(
+                    "Maximum temperature forecast unavailable hai."
+                )
+        if not temperature_only:
+            if rain_points:
+                highest_probability = max(
+                    value for _, value in rain_points
+                )
+                highest_dates = [
+                    date
+                    for date, value in rain_points
+                    if abs(value - highest_probability) < 1e-9
+                ]
+                if len(highest_dates) == 1:
+                    date_text = f"on {highest_dates[0]}"
+                else:
+                    date_text = (
+                        "on all tied dates: " + ", ".join(highest_dates)
+                    )
+                answer_lines.append(
+                    f"Highest forecast rain probability: "
+                    f"{highest_probability:.1f}% {date_text}. "
+                    "Yeh probability hai, guaranteed rainfall nahi."
+                )
+            else:
+                answer_lines.append(
+                    "Rain probability forecast unavailable hai."
+                )
+        answer = "\n".join(answer_lines)
+        return {
+            "district": district_name,
+            "answer": answer,
+            "model": "Backend Forecast Trend Analysis",
+            "weather_source": weather_data.get("source", "Unknown"),
+            "data_mode": weather_data.get("data_mode", "Unknown"),
+            "forecast_days_available": len(forecast),
+            "analysis_type": "forecast_trend",
+        }
+    # Deterministic current-weather summary from verified API readings.
+    current_weather_requested = bool(re.search(
+        r"\b(current weather|current conditions|weather right now|weather now|"
+        r"weather samjhao|mausam samjhao|abhi ka mausam|aaj ka mausam|"
+        r"mausam kaisa|abhi weather|current mausam)\b",
+        question,
+        re.IGNORECASE,
+    ))
+    question_lower = question.casefold()
+    special_request = any(
+        term in question_lower
+        for term in (
+            "rain", "rainfall", "precipitation", "baarish", "barish",
+            "precaution", "precautions", "safety",
+        )
+    ) or any(term in question for term in ("???????", "????"))
+    if current_weather_requested and not special_request:
+        points = []
+        temperature = current.get("temperature_2m")
+        feels_like = current.get("apparent_temperature")
+        humidity = current.get("relative_humidity_2m")
+        wind = current.get("wind_speed_10m")
+        conditions = current.get("conditions")
+        precipitation = current.get("precipitation")
+        valid_number = lambda value: (
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+        )
+        if valid_number(temperature):
+            temperature_text = f"{temperature:.1f}\u00b0C"
+            if valid_number(feels_like):
+                temperature_text += f" (feels like {feels_like:.1f}\u00b0C)"
+            points.append(f"Temperature: {temperature_text}.")
+        else:
+            points.append("Current temperature reading unavailable hai.")
+        if valid_number(humidity):
+            points.append(f"Humidity: {humidity:.1f}%.")
+        else:
+            points.append("Humidity reading unavailable hai.")
+        if valid_number(wind):
+            points.append(f"Wind speed: {wind:.1f} km/h.")
+        else:
+            points.append("Wind speed reading unavailable hai.")
+        if isinstance(conditions, str) and conditions.strip():
+            points.append(f"Weather condition: {conditions.strip()}.")
+        else:
+            points.append("Weather condition reading unavailable hai.")
+        if precipitation is None:
+            points.append(
+                "Current rainfall reading unavailable hai; "
+                "iska matlab zero rainfall nahi hai."
+            )
+        elif valid_number(precipitation):
+            points.append(f"Current precipitation: {precipitation:.1f} mm.")
+        answer = (
+            f"{district_name} ka current weather, available API readings ke basis par:\n- "
+            + "\n- ".join(points)
+        )
+        return {
+            "district": district_name,
+            "answer": answer,
+            "model": "Backend Current Weather Summary",
+            "weather_source": weather_data.get("source", "Unknown"),
+            "data_mode": weather_data.get("data_mode", "Unknown"),
+            "forecast_days_available": len(forecast),
+        }
+    # Send only verified weather fields to AI.
+    current_context = {
+        "temperature_c": current.get("temperature_2m"),
+        "feels_like_c": current.get("apparent_temperature"),
+        "relative_humidity_percent": current.get("relative_humidity_2m"),
+        "wind_speed_kmh": current.get("wind_speed_10m"),
+        "precipitation_mm": ("Unavailable - API returned no value" if current.get("precipitation") is None else current.get("precipitation")),
+        "conditions": current.get("conditions"),
+        "observation_time": current.get("datetime"),
+    }
+    weather_context = {
+        "district": district_name,
+        "weather_source": weather_data.get("source", "Unknown"),
+        "data_mode": weather_data.get("data_mode", "Unknown"),
+        "current_weather": current_context,
+        "forecast_next_days": forecast,
+    }
+    system_prompt = """
+You are Bihar Weather Assistant for an educational weather dashboard.
+Answer in simple, natural Hindi/Hinglish. Be accurate, practical and cautious.
+STRICT DATA RULES:
+1. Use only weather values present in the supplied JSON.
+2. Never guess, calculate or invent missing weather readings.
+3. Never interpret null, missing or unavailable data as zero.
+4. Current temperature and feels-like temperature are in Celsius.
+5. Relative humidity is in percent.
+6. Wind speed is in kilometres per hour.
+7. Precipitation is in millimetres.
+8. If precipitation is unavailable, explicitly say rainfall reading is unavailable.
+9. Unavailable rainfall does NOT mean there is no rain.
+10. Never advise that an umbrella or raincoat is unnecessary when rainfall data is unavailable.
+11. Visibility data is unavailable. Never claim visibility is clear, safe or unsafe.
+12. Do not make driving or road-safety claims based on unavailable visibility data.
+13. Do not invent day/night information, weather alerts or official warnings.
+14. Never call this dashboard an official IMD product.
+PRECAUTION RULES:
+15. Give practical precautions only when supported by available weather data.
+16. For clear conditions, sunglasses or sun protection may be suggested as general advice, not as a guarantee of UV conditions.
+17. For humidity, breathable clothing and hydration can be suggested.
+18. For wind, give proportionate advice; do not suggest loose clothes or sudden-movement restrictions merely because wind is present.
+19. If a relevant reading is unavailable, say that no data-based conclusion can be made.
+20. Never turn missing information into reassurance or a warning.
+FORECAST RULES:
+21. Use only dates and values in forecast_next_days.
+22. Do not invent forecast dates, temperatures or rainfall probabilities.
+23. Write dates in a readable format such as 9 November 2026.
+24. Clearly distinguish maximum and minimum temperatures.
+25. If a forecast field is unavailable, say so instead of guessing.
+RESPONSE STYLE:
+26. Use natural, concise Hindi/Hinglish.
+27. Do not repeat values or sentences.
+28. For simple questions, answer in 1-3 sentences.
+29. For current weather explanations, use at most 5 short bullets.
+30. For precautions, use short actionable bullets and mention relevant unavailable data.
+31. Always include units with numerical values.
+32. For unrelated questions, politely explain your weather-assistant purpose.
+"""
+    ollama_payload = {
+        "model": "qwen2.5:1.5b",
+        "stream": False,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": (
+                    "WEATHER DATA (JSON):\n"
+                    + json.dumps(weather_context, ensure_ascii=False)
+                    + "\n\nUSER QUESTION:\n"
+                    + question
+                ),
+            },
+        ],
+        "options": {
+            "temperature": 0.1,
+            "top_p": 0.8,
+            "num_predict": 180,
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                "http://127.0.0.1:11434/api/chat",
+                json=ollama_payload,
+            )
+            response.raise_for_status()
+            result = response.json()
+    except httpx.ConnectError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Local AI service unavailable. Please start Ollama.",
+        ) from exc
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="AI response timed out. Please try again.",
+        ) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="AI service returned an invalid response.",
+        ) from exc
+    answer = (
+        result.get("message", {}).get("content", "")
+        if isinstance(result, dict)
+        else ""
+    )
+    # Prevent AI from interpreting missing precipitation as zero rainfall.
+    if current.get("precipitation") is None:
+        import re
+        answer = re.sub(
+            r"\b(no rainfall|no rain|no precipitation|zero rainfall|zero precipitation)\b",
+            "rainfall data is unavailable",
+            answer,
+            flags=re.IGNORECASE,
+        )
+    if (
+        current.get("precipitation") is None
+        and re.search(r"\b(rain|rainfall|precipitation|baarish|barish)\b", question, re.IGNORECASE)
+    ):
+        answer = (
+            f"{district_name} ke liye current rainfall reading "
+            "available nahi hai. API ne rainfall value provide nahi ki."
+        )
+    # Deterministic precautions: do not rely on small-model free-form output.
+    if re.search(
+        r"\b(precaution|precautions|safety|सावधानी|बचाव)\b",
+        question,
+        re.IGNORECASE,
+    ):
+        precaution_points = []
+        temperature = current.get("temperature_2m")
+        humidity = current.get("relative_humidity_2m")
+        wind = current.get("wind_speed_10m")
+        conditions = current.get("conditions")
+        precipitation = current.get("precipitation")
+        if isinstance(temperature, (int, float)):
+            precaution_points.append(
+                f"Current temperature {temperature:.1f}°C hai. "
+                "Outdoor activity ke dauran hydration maintain karein."
+            )
+        if isinstance(humidity, (int, float)):
+            precaution_points.append(
+                f"Humidity {humidity:.1f}% hai. "
+                "Comfort ke liye breathable clothes pehnein."
+            )
+        if isinstance(wind, (int, float)):
+            precaution_points.append(
+                f"Wind speed {wind:.1f} km/h record hui hai."
+            )
+        if isinstance(conditions, str) and conditions.strip():
+            if conditions.casefold() == "clear":
+                precaution_points.append(
+                    "Sky clear hai. Bahar jaate waqt sunglasses use kar sakte hain."
+                )
+            else:
+                precaution_points.append(
+                    f"Recorded weather condition: {conditions}."
+                )
+        if precipitation is None:
+            precaution_points.append(
+                "Rainfall reading unavailable hai. Is data se yeh confirm "
+                "nahi hota ki baarish hogi ya nahi."
+            )
+        elif isinstance(precipitation, (int, float)):
+            precaution_points.append(
+                f"Available precipitation reading: {precipitation} mm."
+            )
+        precaution_points.append(
+            "Visibility reading unavailable hai. Driving ke waqt "
+            "actual road conditions dekhein aur normal traffic rules follow karein."
+        )
+        answer = (
+            "Aaj ke available weather data ke basis par:\n- "
+            + "\n- ".join(precaution_points)
+        )
+    if not answer.strip():
+        raise HTTPException(
+            status_code=502,
+            detail="AI could not generate a response.",
+        )
+    return {
+        "district": district_name,
+        "answer": answer.strip(),
+        "model": "qwen2.5:1.5b",
+        "weather_source": weather_data.get("source", "Unknown"),
+        "data_mode": weather_data.get("data_mode", "Unknown"),
+        "forecast_days_available": len(forecast),
     }

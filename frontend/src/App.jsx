@@ -1,7 +1,8 @@
-import { lazy, useEffect, useState } from "react";
+﻿import { lazy, useEffect, useState } from "react";
 import LazySection from "./LazySection";
 import { fetchWeather as fetchDistrictWeather } from "./weatherApi";
 import "./App.css";
+import AIWeatherAssistant from "./AIWeatherAssistant";
 const WeatherComparison = lazy(() => import("./WeatherComparison"));
 const WeatherAlerts = lazy(() => import("./WeatherAlerts"));
 const WeatherMaps = lazy(() => import("./WeatherMaps"));
@@ -111,7 +112,7 @@ function App() {
     };
   }, [district]);
   useEffect(() => {
-    const sectionIds = ["overview", "districts", "weather-alerts", "comparison", "weather-maps", "analytics", "forecast", "insights"];
+    const sectionIds = ["overview", "districts", "weather-alerts", "comparison", "weather-maps", "analytics", "forecast", "insights", "ai-assistant"];
     const updateActiveSection = () => {
       let currentSection = "overview";
       for (const id of sectionIds) {
@@ -205,6 +206,8 @@ function App() {
   </a>
   <a className={navClass("insights")} href="#insights" onClick={() => setActiveSection("insights")}>
     <span>Weather Insights</span>
+  </a>  <a className={navClass("ai-assistant")} href="#ai-assistant" onClick={() => setActiveSection("ai-assistant")}>
+    <span>AI Weather Assistant</span>
   </a>
 </nav>
         <div className="sidebar-status">
@@ -426,6 +429,7 @@ function App() {
             prediction ya official weather warning nahi hain.
           </p>
         </section>
+        <AIWeatherAssistant district={district} />
         <footer className="page-footer">
           Bihar Weather Intelligence Dashboard <span>|</span> Educational
           prototype
