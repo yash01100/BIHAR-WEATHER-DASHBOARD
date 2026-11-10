@@ -687,7 +687,7 @@ async def ai_weather_chat(request: AIWeatherChatRequest):
 
     # Deterministic forecast trend analysis using verified provider data.
     trend_requested = bool(re.search(
-        r"\b(trend|pattern|increase|increasing|decrease|decreasing|rise|rising|fall|falling|badhega|badhegi|badhta|ghatega|ghategi|kam hoga|sabse zyada|sabse kam|highest|lowest|maximum|minimum)\b|rain\s*(chance|probability)|baarish.*(chance|probability)|temperature.*(trend|change)",
+        r"\b(trend|pattern|increase|increasing|decrease|decreasing|rise|rising|fall|falling|badhega|badhegi|badhta|ghatega|ghategi|kam hoga|sabse zyada|sabse kam|highest|lowest|maximum|minimum)\b|rain\s*(chance|probability)|rainfall\s*(chance|probability)|precipitation\s*(chance|probability)|baarish.*(chance|probability)|temperature.*(trend|change)",
         question,
         re.IGNORECASE,
     ))
@@ -872,6 +872,96 @@ async def ai_weather_chat(request: AIWeatherChatRequest):
             "district": district_name,
             "answer": answer,
             "model": "Backend Current Weather Summary",
+            "weather_source": weather_data.get("source", "Unknown"),
+            "data_mode": weather_data.get("data_mode", "Unknown"),
+            "forecast_days_available": len(forecast),
+        }
+    # Deterministic current rainfall response (no local Ollama required).
+    if re.search(
+        r"\b(rain|rainfall|precipitation|baarish|barish)\b",
+        question,
+        re.IGNORECASE,
+    ):
+        precipitation = current.get("precipitation")
+        if (
+            isinstance(precipitation, (int, float))
+            and not isinstance(precipitation, bool)
+        ):
+            answer = (
+                f"{district_name} ke liye available current precipitation "
+                f"reading {precipitation:.2f} mm hai."
+            )
+        else:
+            answer = (
+                f"{district_name} ke liye current rainfall reading "
+                "available nahi hai. API ne rainfall value provide nahi ki; "
+                "iska matlab zero rainfall nahi hai."
+            )
+        return {
+            "district": district_name,
+            "answer": answer,
+            "model": "Backend Current Rainfall Summary",
+            "weather_source": weather_data.get("source", "Unknown"),
+            "data_mode": weather_data.get("data_mode", "Unknown"),
+            "forecast_days_available": len(forecast),
+        }
+    # Deterministic weather precautions response (no local Ollama required).
+    if re.search(
+        r"\b(precaution|precautions|safety|savdhani|bachav|suraksha)\b",
+        question,
+        re.IGNORECASE,
+    ):
+        precaution_points = []
+        temperature = current.get("temperature_2m")
+        humidity = current.get("relative_humidity_2m")
+        wind = current.get("wind_speed_10m")
+        conditions = current.get("conditions")
+        precipitation = current.get("precipitation")
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
+            precaution_points.append(
+                f"Current temperature {temperature:.1f}°C hai. "
+                "Outdoor activity ke dauran hydration maintain karein."
+            )
+        if isinstance(humidity, (int, float)) and not isinstance(humidity, bool):
+            precaution_points.append(
+                f"Humidity {humidity:.1f}% hai. "
+                "Comfort ke liye breathable clothes pehnein."
+            )
+        if isinstance(wind, (int, float)) and not isinstance(wind, bool):
+            precaution_points.append(
+                f"Wind speed {wind:.1f} km/h record hui hai."
+            )
+        if isinstance(conditions, str) and conditions.strip():
+            if conditions.casefold() == "clear":
+                precaution_points.append(
+                    "Sky clear hai. Bahar jaate waqt sunglasses ya sun protection "
+                    "general precaution ke roop mein use kar sakte hain."
+                )
+            else:
+                precaution_points.append(
+                    f"Recorded weather condition: {conditions}."
+                )
+        if precipitation is None:
+            precaution_points.append(
+                "Rainfall reading unavailable hai. Is data se baarish "
+                "hone ya na hone ki confirmation nahi hoti."
+            )
+        elif isinstance(precipitation, (int, float)) and not isinstance(precipitation, bool):
+            precaution_points.append(
+                f"Available precipitation reading: {precipitation:.2f} mm."
+            )
+        precaution_points.append(
+            "Visibility reading unavailable hai. Driving ke waqt actual "
+            "road conditions dekhein aur normal traffic rules follow karein."
+        )
+        answer = (
+            "Available current weather data ke basis par:\n- "
+            + "\n- ".join(precaution_points)
+        )
+        return {
+            "district": district_name,
+            "answer": answer,
+            "model": "Backend Weather Precautions",
             "weather_source": weather_data.get("source", "Unknown"),
             "data_mode": weather_data.get("data_mode", "Unknown"),
             "forecast_days_available": len(forecast),
