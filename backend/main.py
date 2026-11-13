@@ -811,6 +811,51 @@ async def ai_weather_chat(request: AIWeatherChatRequest):
             "forecast_days_available": len(forecast),
             "analysis_type": "forecast_trend",
         }
+    # Deterministic 7-day forecast response (no local Ollama required).
+    forecast_question = bool(re.search(
+        r"\b(forecast|7[- ]day)\b|agle\s+(?:7|saat)\s+din|next\s+7\s+days",
+        question,
+        re.IGNORECASE,
+    ))
+    if forecast_question:
+        answer_lines = [
+            f"{district_name} ka agle 7 din ka weather forecast:"
+        ]
+        if not forecast:
+            answer_lines.append(
+                "Abhi 7-day forecast readings available nahi hain."
+            )
+        for index, day in enumerate(forecast, start=1):
+            parts = [f"{index}. {day['date']}"]
+            maximum = day.get("maximum_temperature_c")
+            minimum = day.get("minimum_temperature_c")
+            rain = day.get("precipitation_probability_percent")
+            if isinstance(maximum, (int, float)):
+                parts.append(f"Max: {maximum:.1f}°C")
+            else:
+                parts.append("Max temperature unavailable")
+            if isinstance(minimum, (int, float)):
+                parts.append(f"Min: {minimum:.1f}°C")
+            else:
+                parts.append("Min temperature unavailable")
+            if isinstance(rain, (int, float)):
+                parts.append(f"Rain probability: {rain:.1f}%")
+            else:
+                parts.append("Rain probability unavailable")
+            answer_lines.append(" | ".join(parts))
+        answer_lines.append(
+            "Note: Rain probability possibility batati hai, "
+            "guaranteed rainfall nahi."
+        )
+        return {
+            "district": district_name,
+            "answer": "\n".join(answer_lines),
+            "model": "Backend 7-Day Forecast",
+            "weather_source": weather_data.get("source", "Unknown"),
+            "data_mode": weather_data.get("data_mode", "Unknown"),
+            "forecast_days_available": len(forecast),
+            "analysis_type": "seven_day_forecast",
+        }
     # Deterministic current-weather summary from verified API readings.
     current_weather_requested = bool(re.search(
         r"\b(current weather|current conditions|weather right now|weather now|"
